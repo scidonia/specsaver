@@ -17,6 +17,7 @@ import textwrap
 from collections.abc import Callable
 
 from specsaver.registry import ContractRecord, get_registry
+from specsaver.types import ContractKind
 
 _CONJUNCTION_PYTHON = " and "
 _CONJUNCTION_MATH = " ∧ "
@@ -28,58 +29,92 @@ _INDENT = "      "
 # ---------------------------------------------------------------------------
 
 
-def render_precondition(entry_point: str, mode: str = "python") -> str:
-    """All preconditions for an entry point, conjoined."""
-    records = get_registry().preconditions_for(entry_point)
+def render_precondition(feature: str, mode: str = "python") -> str:
+    """All preconditions for a feature, conjoined."""
+    records = get_registry().list_by_feature_and_kind(
+        feature, ContractKind.PRECONDITION
+    )
     if not records:
         return "True"
     return _render_conjunction(records, mode)
 
 
-def render_postcondition(entry_point: str, mode: str = "python") -> str:
-    """All postconditions for an entry point, conjoined."""
-    records = get_registry().postconditions_for(entry_point)
+def render_postcondition(feature: str, mode: str = "python") -> str:
+    """All postconditions for a feature, conjoined."""
+    records = get_registry().list_by_feature_and_kind(
+        feature, ContractKind.POSTCONDITION
+    )
     if not records:
         return "True"
     return _render_conjunction(records, mode)
 
 
-def render_invariant(entry_point: str, mode: str = "python") -> str:
-    """All invariants for an entry point, conjoined."""
-    records = get_registry().invariants_for(entry_point)
+def render_invariant(feature: str, mode: str = "python") -> str:
+    """All invariants for a feature, conjoined."""
+    records = get_registry().list_by_feature_and_kind(
+        feature, ContractKind.INVARIANT
+    )
     if not records:
         return "True"
     return _render_conjunction(records, mode)
 
 
-def render_contract(entry_point: str) -> str:
-    """Full display: pre, post, and invariant blocks in math notation."""
-    pre = render_precondition(entry_point, mode="math")
-    post = render_postcondition(entry_point, mode="math")
-    inv = render_invariant(entry_point, mode="math")
+def render_exceptional(feature: str, mode: str = "python") -> str:
+    """All exception contracts for a feature, conjoined by exception type."""
+    records = get_registry().list_by_feature_and_kind(
+        feature, ContractKind.EXCEPTIONAL
+    )
+    if not records:
+        return ""
+    parts: list[str] = []
+    for r in records:
+        exc_name = getattr(r.func, "_specsaver_exc_type", "Exception")
+        expr = _extract_return_expression(r.func)
+        if expr:
+            rendered = _render_expr(ast.parse(expr, mode="eval").body, mode)
+            parts.append(f"{exc_name}: {rendered}")
+        else:
+            parts.append(exc_name)
+    join = _CONJUNCTION_MATH if mode == "math" else _CONJUNCTION_PYTHON
+    return join.join(parts)
+
+    """All invariants for a feature, conjoined."""
+    records = get_registry().list_by_feature_and_kind(
+        feature, ContractKind.INVARIANT
+    )
+    if not records:
+        return "True"
+    return _render_conjunction(records, mode)
+
+
+def render_contract(feature: str) -> str:
+    """Full display: pre, post, invariant, and exception blocks."""
+    pre = render_precondition(feature, mode="math")
+    post = render_postcondition(feature, mode="math")
+    inv = render_invariant(feature, mode="math")
+    exc = render_exceptional(feature, mode="math")
     inv_line = f"\ninvariant:\n{_INDENT}{inv}" if inv != "True" else ""
-    return f"pre:\n{_INDENT}{pre}\npost:\n{_INDENT}{post}{inv_line}"
+    exc_line = f"\nexceptions:\n{_INDENT}{exc}" if exc else ""
+    return f"pre:\n{_INDENT}{pre}\npost:\n{_INDENT}{post}{inv_line}{exc_line}"
 
 
-def render_entry_point(entry_point: str) -> str:
-    """Structured, indented Dafny/JML-style contract for one entry point.
+def render_entry_point(feature: str) -> str:
+    """Structured, indented Dafny/JML-style contract for one feature.
 
     Each keyword (requires, modifies, ensures, invariant, effects) is
     bold; its value starts on the next line indented one step.  Frame
     fields and event names are listed one per line for readability.
     Conjunctions are broken at `∧` boundaries into aligned lines.
     """
-    from specsaver.types import ContractKind
-
     registry = get_registry()
 
-    pre = render_precondition(entry_point, mode="math")
-    post = render_postcondition(entry_point, mode="math")
-    inv = render_invariant(entry_point, mode="math")
+    pre = render_precondition(feature, mode="math")
+    post = render_postcondition(feature, mode="math")
+    inv = render_invariant(feature, mode="math")
 
-    writes_records = registry.list_by_entry_point(entry_point, ContractKind.WRITES)
-    reads_records = registry.list_by_entry_point(entry_point, ContractKind.READS)
-    effect_records = registry.list_by_entry_point(entry_point, ContractKind.EFFECT)
+    writes_records = registry.list_by_feature_and_kind(feature, ContractKind.WRITES)
+    reads_records = registry.list_by_feature_and_kind(feature, ContractKind.READS)
+    effect_records = registry.list_by_feature_and_kind(feature, ContractKind.EFFECT)
 
     writes_set: set[str] = set()
     reads_set: set[str] = set()
@@ -147,6 +182,12 @@ def render_entry_point(entry_point: str) -> str:
             for e in sorted(eff_emits):
                 lines.append(f"{_T2}{e}")
 
+    # exceptions
+    exc = render_exceptional(feature, mode="math")
+    if exc:
+        lines.append("[bold green]exceptions:[/]")
+        lines.extend(_indent_lines(_break_conjunction(exc), 1))
+
     return "\n".join(lines)
 
 
@@ -174,18 +215,18 @@ def _indent_lines(parts: list[str], level: int) -> list[str]:
 
 
 def render_all() -> str:
-    """Render the full contract for every entry point in the registry."""
+    """Render the full contract for every feature in the registry."""
     registry = get_registry()
-    entry_points: set[str] = set()
+    features: set[str] = set()
     for r in registry.list_all():
-        if r.entry_point:
-            entry_points.add(r.entry_point)
-    if not entry_points:
+        if r.feature:
+            features.add(r.feature)
+    if not features:
         return "No contracts registered."
     sections: list[str] = []
-    for ep in sorted(entry_points):
-        sections.append(f"[{ep}]")
-        sections.append(render_contract(ep))
+    for f in sorted(features):
+        sections.append(f"[{f}]")
+        sections.append(render_contract(f))
         sections.append("")
     return "\n".join(sections)
 

@@ -93,11 +93,21 @@ def _extract_param_type(f: Callable[..., Any], index: int, role: str) -> type:
 def _check_subclass(
     annotation: Any, base: type, f: Callable[..., Any], role: str
 ) -> None:
-    if not (isinstance(annotation, type) and issubclass(annotation, base)):
+    if isinstance(annotation, type) and issubclass(annotation, base):
+        return
+    args = typing.get_args(annotation)
+    if args:
+        for arg in args:
+            if isinstance(arg, type) and issubclass(arg, base):
+                return
         raise TypeError(
-            f"{f.__qualname__}: the {role} parameter must be annotated with "
-            f"a {base.__name__} subclass, got {annotation!r}"
+            f"{f.__qualname__}: no member of the {role} union "
+            f"({annotation!r}) is a {base.__name__} subclass"
         )
+    raise TypeError(
+        f"{f.__qualname__}: the {role} parameter must be annotated with "
+        f"a {base.__name__} subclass, got {annotation!r}"
+    )
 
 
 def _enforce_canonical_signature(
@@ -156,9 +166,15 @@ def _register(
 def _make_decorator(kind: ContractKind):
     """Factory for decorators accepting `from_gherkin`/`feature`/`entry_point`."""
 
-    def dec(f=None, /, *, from_gherkin=None, feature=None, entry_point=None):
+    def dec(
+        f=None,
+        /,
+        *,
+        from_gherkin=None,
+        feature=None,
+        entry_point=None,
+    ):
         if f is not None:
-            # Called as @decorator (no arguments)
             return _register(
                 kind,
                 f,
@@ -166,7 +182,6 @@ def _make_decorator(kind: ContractKind):
                 feature=feature,
                 entry_point=entry_point,
             )
-        # Called as @decorator(entry_point="...", ...)
         return lambda f: _register(
             kind,
             f,
@@ -187,7 +202,45 @@ function = _make_decorator(ContractKind.FUNCTION)
 writes = _make_decorator(ContractKind.WRITES)
 reads = _make_decorator(ContractKind.READS)
 effect = _make_decorator(ContractKind.EFFECT)
+exceptional = _make_decorator(ContractKind.EXCEPTIONAL)
 ghost_update = _make_decorator(ContractKind.GHOST_UPDATE)
+
+
+def _exceptional_dec(
+    f=None,
+    /,
+    *,
+    exc_type: Any | None = None,
+    from_gherkin=None,
+    feature=None,
+    entry_point=None,
+):
+    """Decorator for exception contracts — associates an exception type
+    with the condition under which it is raised.
+
+    ``exc_type`` is stored as ``_specsaver_exc_type`` on the function
+    so the runner can match caught exceptions to their contracts.
+    """
+    kind = ContractKind.EXCEPTIONAL
+
+    def wrap(func):
+        if exc_type is not None:
+            name = exc_type.code if hasattr(exc_type, "code") else exc_type.__qualname__
+            func._specsaver_exc_type = name
+        return _register(
+            kind,
+            func,
+            from_gherkin=from_gherkin,
+            feature=feature,
+            entry_point=entry_point,
+        )
+
+    if f is not None:
+        return wrap(f)
+    return wrap
+
+
+exceptional = _exceptional_dec
 
 
 def ghost(cls: type) -> type:

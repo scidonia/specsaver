@@ -11,6 +11,7 @@ class ContractKind(Enum):
     WRITES = auto()
     READS = auto()
     EFFECT = auto()
+    EXCEPTIONAL = auto()
     GHOST = auto()
     GHOST_UPDATE = auto()
     MEASURE = auto()

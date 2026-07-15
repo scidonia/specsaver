@@ -156,79 +156,6 @@ def _print_examples_tables(io, outline) -> None:
         )
 
 
-def _print_verify_results(io, outline, entry_point: str, builder) -> None:
-    """Run the builder against every Examples row and report pass/fail."""
-    from rich.panel import Panel
-    from rich.table import Table
-    from rich.text import Text
-
-    from specsaver.gherkin import examples_for, parse_examples_tables_file
-    from specsaver.verify import run_entry_point
-
-    feature_path = _find_feature_file(outline.feature, outline.module)
-    if feature_path is None:
-        return
-    tables = parse_examples_tables_file(feature_path)
-    rows = examples_for(tables, outline.name)
-
-    if not rows:
-        return
-
-    verdicts: list[tuple[str, str, str, str, str]] = []
-    expects_rejection = _outline_expects_rejection(outline)
-    all_ok = True
-    for row in rows:
-        try:
-            state, args, impl = builder(row)
-        except Exception as exc:
-            verdicts.append(
-                (_row_label(row), "—", "—", "—", f"[red]build error: {exc}[/]")
-            )
-            all_ok = False
-            continue
-        outcome = run_entry_point(entry_point, impl, state, args)
-        pre = _check_icon(outcome.preconditions_held, expects_rejection)
-        inv = "[green]✓[/]" if outcome.invariants_held else "[red]✗[/]"
-
-        if outcome.skipped_call:
-            post = "—"
-        else:
-            post = "[green]✓[/]" if outcome.postconditions_held else "[red]✗[/]"
-
-        if expects_rejection:
-            correct = not outcome.preconditions_held
-            if correct and outcome.invariants_held:
-                note = "[dim]REJECTED (expected)[/]"
-            else:
-                note = f"[red]UNEXPECTED: {outcome.describe_failures()}[/]"
-                all_ok = False
-        elif outcome.ok:
-            note = "[green]PASS[/]"
-        else:
-            note = f"[red]{outcome.describe_failures()}[/]"
-            all_ok = False
-        verdicts.append((_row_label(row), pre, post, inv, note))
-
-    if expects_rejection:
-        title_style = "bold green" if all_ok else "bold red"
-    else:
-        title_style = "bold green" if all_ok and verdicts else "bold red"
-    tbl = Table(show_header=True)
-    tbl.add_column("Row", style="dim")
-    tbl.add_column("Pre", justify="center")
-    tbl.add_column("Post", justify="center")
-    tbl.add_column("Inv", justify="center")
-    tbl.add_column("Result")
-    for lbl, pre, post, inv, note in verdicts:
-        tbl.add_row(lbl, pre, post, inv, note)
-    io.print(
-        Panel(
-            tbl,
-            title=Text(f"Verify: {outline.name}", style=title_style),
-        )
-    )
-
-
 def _row_label(row: dict[str, str]) -> str:
     """Compact row identifier from Gherkin examples values."""
     parts = [f"{k}={v}" for k, v in row.items()]
@@ -257,24 +184,94 @@ def _check_icon(passed: bool, expects_rejection: bool) -> str:
 
 
 def _discover_runners() -> dict[str, dict]:
-    """Discover ``__trace_runner__`` dicts from registered modules.
+    """Deprecated — use _discover_verify_runners instead."""
+    return {}
 
-    Returns ``{entry_point: runner_dict}`` where each value is a module's
-    runner dict value for that entry point.
+
+def _print_verify_results(io, outline, entry_point, builder) -> None:
+    """Deprecated — use _print_verify_results_symmetric instead."""
+    pass
+
+
+def _print_verify_results_symmetric(
+    io, outline, feature, runner_fn, pre_only=False
+) -> None:
+    """Run the symmetric runner against every Examples row and report."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+
+    from specsaver.gherkin import examples_for, parse_examples_tables_file
+
+    feature_path = _find_feature_file(outline.feature, outline.module)
+    if feature_path is None:
+        return
+    tables = parse_examples_tables_file(feature_path)
+    rows = examples_for(tables, outline.name)
+
+    if not rows:
+        return
+
+    verdicts: list[tuple[str, str]] = []
+    all_ok = True
+    for row in rows:
+        label = _row_label(row)
+        try:
+            passed, message = runner_fn(row, pre_only=pre_only)
+        except Exception as exc:
+            passed, message = False, f"error: {exc}"
+        if not passed:
+            all_ok = False
+        color = "green" if passed else "red"
+        verdicts.append((label, f"[{color}]{message}[/]"))
+
+    title = f"Verify: {outline.name}"
+    if pre_only:
+        title += " (preconditions only)"
+    title_style = "bold green" if all_ok else "bold red"
+    tbl = Table(show_header=True)
+    tbl.add_column("Row", style="dim")
+    tbl.add_column("Result")
+    for lbl, note in verdicts:
+        tbl.add_row(lbl, note)
+    io.print(
+        Panel(
+            tbl,
+            title=Text(title, style=title_style),
+        )
+    )
+
+
+def _discover_verify_runners() -> dict[str, Callable]:
+    """Discover ``__verify_runner__`` dicts from registered modules.
+
+    Returns ``{feature: runner_fn}`` where each runner_fn takes a
+    Gherkin Examples row dict and returns ``(passed: bool, message: str)``.
+
+    Checks both the contract module and its parent package, since
+    ``__verify_runner__`` is typically defined in the package __init__.
     """
     import importlib
 
-    runners: dict[str, dict] = {}
+    runners: dict[str, Callable] = {}
     modules_seen: set[str] = set()
     for r in get_registry().list_all():
-        if r.entry_point and r.module not in modules_seen:
-            modules_seen.add(r.module)
+        candidates = [r.module]
+        # Also check parent package (e.g. examples.bank_transfer
+        # when contracts are in examples.bank_transfer.contracts)
+        parts = r.module.rsplit(".", 1)
+        if len(parts) == 2:
+            candidates.append(parts[0])
+        for mod_name in candidates:
+            if mod_name in modules_seen:
+                continue
+            modules_seen.add(mod_name)
             try:
-                mod = importlib.import_module(r.module)
-                mod_runners = getattr(mod, "__trace_runner__", None)
+                mod = importlib.import_module(mod_name)
+                mod_runners = getattr(mod, "__verify_runner__", None)
                 if isinstance(mod_runners, dict):
-                    for ep, builder in mod_runners.items():
-                        runners[ep] = builder
+                    for feat, fn in mod_runners.items():
+                        runners[feat] = fn
             except Exception:
                 pass
     return runners
@@ -284,16 +281,25 @@ def trace_contract(
     filter_pattern: str | None = None,
     *,
     verify: bool = False,
+    pre_only: bool = False,
 ) -> str:
-    """For each entry point: the Gherkin scenario block and the full contract."""
+    """For each feature: the Gherkin scenario block and the full contract.
+
+    When verify=True, runs each Examples row through the symmetric
+    runner.  When pre_only=True (implies verify=True), only checks
+    admissibility + invariants — no implementation needed.
+    """
     from rich.markup import escape
     from rich.panel import Panel
     from rich.text import Text
 
-    ep_to_step_texts: dict[str, set[str]] = defaultdict(set)
+    if pre_only:
+        verify = True
+
+    feature_to_step_texts: dict[str, set[str]] = defaultdict(set)
     for r in get_registry().list_all():
-        if r.entry_point and r.from_gherkin:
-            ep_to_step_texts[r.entry_point].add(r.from_gherkin)
+        if r.feature and r.from_gherkin:
+            feature_to_step_texts[r.feature].add(r.from_gherkin)
 
     outlines = _all_outlines()
     pattern = (
@@ -301,19 +307,19 @@ def trace_contract(
     )
 
     def build(io):
-        runners = _discover_runners() if verify else {}
-        shown_eps: set[str] = set()
+        verify_runners = _discover_verify_runners() if verify else {}
+        shown_features: set[str] = set()
         for o in outlines:
             if pattern and not (
                 pattern.search(o.name) or any(pattern.search(s) for s in o.steps)
             ):
                 continue
-            matching_eps: set[str] = set()
-            for ep, step_texts in ep_to_step_texts.items():
+            matching_features: set[str] = set()
+            for feat, step_texts in feature_to_step_texts.items():
                 for st in step_texts:
                     if st in o.steps:
-                        matching_eps.add(ep)
-            if not matching_eps:
+                        matching_features.add(feat)
+            if not matching_features:
                 continue
             gherkin_body = ""
             last_color = ""
@@ -332,24 +338,26 @@ def trace_contract(
                 )
             )
             _print_examples_tables(io, o)
-            for ep in sorted(matching_eps):
-                shown_eps.add(ep)
-                if verify and ep in runners:
-                    _print_verify_results(io, o, ep, runners[ep])
+            for feat in sorted(matching_features):
+                shown_features.add(feat)
+                if verify and feat in verify_runners:
+                    _print_verify_results_symmetric(
+                        io, o, feat, verify_runners[feat], pre_only=pre_only
+                    )
                 io.print(
                     Panel(
-                        Text.from_markup(render_entry_point(ep)),
-                        title=Text(f"Contract: [{ep}]", style="bold yellow"),
+                        Text.from_markup(render_entry_point(feat)),
+                        title=Text(f"Contract: [{feat}]", style="bold yellow"),
                     )
                 )
             io.print()
-        remaining = set(ep_to_step_texts) - shown_eps
+        remaining = set(feature_to_step_texts) - shown_features
         if remaining:
             io.print(
-                Text("Entry points without a linked Gherkin scenario:", style="dim")
+                Text("Features without a linked Gherkin scenario:", style="dim")
             )
-            for ep in sorted(remaining):
-                io.print(f"  [yellow]{ep}[/]")
+            for feat in sorted(remaining):
+                io.print(f"  [yellow]{feat}[/]")
 
     return _capture(build)
 

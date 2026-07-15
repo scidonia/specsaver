@@ -21,8 +21,19 @@ def _import_module(module: str) -> None:
 
 
 @app.command()
-def list_contracts() -> None:
+def list_contracts(
+    module: str = typer.Argument(
+        None, help="Dotted module path to load contracts from (optional)"
+    ),
+) -> None:
     """List all registered contracts."""
+    if module:
+        try:
+            _import_module(module)
+        except ImportError as e:
+            typer.echo(f"Error importing {module}: {e}", err=True)
+            raise typer.Exit(1) from e
+
     from specsaver import get_registry
 
     registry = get_registry()
@@ -34,6 +45,7 @@ def list_contracts() -> None:
 
     for r in records:
         typer.echo(f"  [{r.category}] {r.identifier}  ({r.status.name})")
+    typer.echo(f"\n  {len(records)} contract(s) total.")
 
 
 @app.command()
@@ -92,7 +104,12 @@ def trace(
     verify: bool = typer.Option(
         False,
         "--verify",
-        help="Run tests for each entry point and show pass/fail inline",
+        help="Run tests for each feature and show pass/fail inline",
+    ),
+    pre_only: bool = typer.Option(
+        False,
+        "--pre-only",
+        help="Check only preconditions + invariants against examples (no impl needed)",
     ),
 ) -> None:
     """Trace Gherkin scenarios to their contracts, and vice versa."""
@@ -109,7 +126,7 @@ def trace(
     elif mode == "scenarios":
         output = trace_scenarios(search)
     else:
-        output = trace_contract(search, verify=verify)
+        output = trace_contract(search, verify=verify, pre_only=pre_only)
     typer.echo(output)
 
 

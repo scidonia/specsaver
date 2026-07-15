@@ -131,6 +131,54 @@ def parse_feature_file(path: str | Path) -> list[GherkinScenario]:
 
 
 # ---------------------------------------------------------------------------
+# Rule blocks — named business rules, e.g. for attaching invariants
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GherkinRule:
+    """A `Rule:` block — a named business rule.
+
+    `scenarios` holds the names of any Scenario/Scenario Outline nodes the
+    Gherkin grammar nests directly under this Rule.  Gherkin attaches
+    everything from a `Rule:` line until the next `Rule:` (or end of file)
+    as that Rule's children, so a Rule used purely as a documentation
+    heading (no scenario of its own) legitimately has an empty
+    `scenarios` tuple — `text` remains a valid `from_gherkin` anchor for
+    contracts, such as invariants, that hold across a feature rather than
+    belonging to one specific Given/When/Then step.
+    """
+
+    text: str
+    scenarios: tuple[str, ...] = field(default_factory=tuple)
+
+
+def parse_rules(feature_text: str) -> list[GherkinRule]:
+    """Extract every `Rule:` block's text and any scenario names nested
+    directly under it, reading the Gherkin AST directly (no text parsing).
+    """
+    doc = _parse_document(feature_text, uri="<feature>")
+    rules: list[GherkinRule] = []
+
+    for child in doc["feature"].get("children", []):
+        rule = child.get("rule")
+        if rule is None:
+            continue
+        scenario_names = tuple(
+            c["scenario"]["name"] for c in rule.get("children", []) if "scenario" in c
+        )
+        rules.append(GherkinRule(text=rule.get("name", ""), scenarios=scenario_names))
+
+    return rules
+
+
+def parse_rules_file(path: str | Path) -> list[GherkinRule]:
+    """Parse a .feature file from disk and extract its `Rule:` blocks."""
+    p = Path(path)
+    return parse_rules(p.read_text())
+
+
+# ---------------------------------------------------------------------------
 # Structured Examples tables — for driving generated tests
 # ---------------------------------------------------------------------------
 

@@ -20,6 +20,7 @@ from typing import Any
 
 from specsaver.binding import bind_call
 from specsaver.registry import ContractRecord, get_registry
+from specsaver.types import ContractKind
 
 
 @dataclass
@@ -92,6 +93,25 @@ def _run_checks(records: list[ContractRecord], *call_args: Any) -> list[Contract
                 ContractCheck(identifier=r.identifier, passed=False, error=str(e))
             )
     return checks
+
+
+def run_checks(records: list[ContractRecord], *call_args: Any) -> list[ContractCheck]:
+    """Run every contract in `records` against `call_args`.
+
+    Public entry point — callers filter records from the registry by
+    feature, kind, or Gherkin text, then pass them here.
+    """
+    return _run_checks(records, *call_args)
+
+
+def check_by_feature(
+    feature: str,
+    kind: ContractKind,
+    *call_args: Any,
+) -> list[ContractCheck]:
+    """Run every contract of `kind` for `feature` against `call_args`."""
+    records = get_registry().list_by_feature_and_kind(feature, kind)
+    return _run_checks(records, *call_args)
 
 
 def check_preconditions(entry_point: str, state: Any, args: Any) -> list[ContractCheck]:

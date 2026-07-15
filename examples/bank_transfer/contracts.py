@@ -1,28 +1,38 @@
-"""Bank transfer — semantic contracts with Gherkin origin and entry-point grouping.
+"""Bank transfer — semantic contracts with Gherkin origin.
 
 Every contract declares:
-  - `entry_point="transfer"` — the operation it belongs to.  This is what
-    makes the full set of preconditions/postconditions for `transfer`
-    discoverable via the registry (`preconditions_for`/`postconditions_for`)
-    instead of relying on a test author to remember every contract name.
-  - `from_gherkin` — the Gherkin step it flows from (traceability).
+  - `from_gherkin` — the Gherkin step text it flows from (traceability).
   - `feature` — the feature file it belongs to.
 
-Every precondition for entry_point="transfer" shares the canonical
-signature `Pre(state, args) -> bool`.  Every postcondition shares
-`Post(old_state, args, result, new_state) -> bool`.  `args` is the single
-structured input object `TransferArgs` (an `Args` subclass) — not a
-scattered argument list — and `result` is the single structured output
-object `TransferReceipt` (a `Result` subclass).  This is what lets
-`specsaver.verify.run_entry_point` call every registered contract
-uniformly, and lets the registry reject a mismatched Args/Result type at
-registration time rather than at call time.
+Contracts reason over ``TransferSpecState`` — an immutable snapshot
+with provenance decomposition (observed, derived, ghost).  The same
+``snapshot`` projection produces both the pre-state and post-state
+(symmetry requirement).
+
+Three outcome categories:
+
+  - **Admissibility failure** — a caller precondition fails; the
+    implementation is never called.  Examples rows have
+    ``outcome: rejected``.
+
+  - **Success** — admissibility holds; the implementation returns a
+    ``TransferReceipt`` without raising.  Postconditions verify the
+    state transition.  Examples rows have ``outcome: success``.
+
+  - **Exceptional outcome** — admissibility holds; the implementation
+    raises a domain exception (``InsufficientFundsError``,
+    ``CurrencyMismatchError``, or a fault-injected error).  The runner
+    catches the exception, verifies it against the matching
+    ``@exceptional`` contract, and checks that error postconditions
+    (state unchanged) hold.  Examples rows have
+    ``outcome: error:<CODE>``.
 
 Feature file: transfer.feature
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from specsaver import (
@@ -33,8 +43,8 @@ from specsaver import (
     Frame,
     Result,
     effect,
+    exceptional,
     forall,
-    ghost,
     invariant,
     old,
     postcondition,
@@ -45,42 +55,6 @@ from specsaver import (
 )
 
 FEATURE = "transfer.feature"
-TRANSFER = "transfer"
-
-
-def _build_transfer_test(row: dict[str, str]):
-    """Build (state, args, impl) from a Gherkin Examples row.
-
-    Used by `specsaver trace --verify` to auto-run tests.  Missing
-    columns (e.g. ``target_balance`` for non-existent-account rows)
-    silently skip that account.
-    """
-    source_id = row["source"]
-    target_id = row["target"]
-    amount = int(row["amount"])
-    currency = row["currency"]
-
-    accounts: dict[str, Account] = {}
-    accounts[source_id] = Account(
-        id=source_id, balance=int(row["source_balance"]), currency=currency
-    )
-    if "target_balance" in row:
-        accounts[target_id] = Account(
-            id=target_id, balance=int(row["target_balance"]), currency=currency
-        )
-
-    state = AccountState(accounts=accounts)
-    args = TransferArgs(source_id=source_id, target_id=target_id, amount=amount)
-
-    from examples.bank_transfer.service import TransferService
-
-    impl = TransferService().transfer
-    return state, args, impl
-
-
-__trace_runner__ = {
-    TRANSFER: _build_transfer_test,
-}
 
 
 # ---------------------------------------------------------------------------
@@ -96,19 +70,16 @@ class Account:
 
 
 @dataclass
-class AccountState:
-    accounts: dict[str, Account] = field(default_factory=dict)
+class TransferLimits:
+    """Transfer limits — observed state (stored in a DB table)."""
+
+    per_transfer_max: int | None = None
+    daily_remaining: int | None = None
+    monthly_remaining: int | None = None
 
 
 @dataclass(frozen=True)
 class TransferArgs(Args):
-    """The single structured input to the `transfer` entry point.
-
-    Every precondition/postcondition for entry_point="transfer" takes this
-    as `args`, rather than each contract inventing its own subset of
-    positional arguments.  Frozen — contracts must not mutate their input.
-    """
-
     source_id: str
     target_id: str
     amount: int
@@ -116,29 +87,78 @@ class TransferArgs(Args):
 
 @dataclass(frozen=True)
 class TransferReceipt(Result):
-    """The single structured output of the `transfer` entry point.
-
-    Frozen — postconditions must not mutate the value they assert
-    properties about.
-    """
+    """Successful transfer outcome."""
 
     transaction_id: str
     source_id: str
     target_id: str
     amount: int
-    success: bool
+
+
+# -- Exception hierarchy — real Python exceptions, natural for Python -----
+
+
+class TransferError(Exception):
+    """Base for all transfer domain exceptions."""
+
+    def __init__(self, source_id: str, target_id: str, amount: int,
+                 message: str = "") -> None:
+        self.source_id = source_id
+        self.target_id = target_id
+        self.amount = amount
+        self.message = message
+
+
+class InsufficientFundsError(TransferError):
+    code = "INSUFFICIENT_FUNDS"
+
+
+class CurrencyMismatchError(TransferError):
+    code = "CURRENCY_MISMATCH"
+
+
+class AccountNotFoundError(TransferError):
+    code = "ACCOUNT_NOT_FOUND"
+
+
+class SimulatedFaultError(TransferError):
+    code = "FAULT_INJECTED"
 
 
 # ---------------------------------------------------------------------------
-# Ghost state — specification-only, not in the implementation
+# SpecState — immutable contract-facing snapshot with provenance
 # ---------------------------------------------------------------------------
 
 
-@ghost
-class TransferLimits:
-    daily_remaining: int
-    monthly_remaining: int
-    per_transfer_max: int
+@dataclass(frozen=True)
+class TransferObserved:
+    """State read from the concrete database."""
+
+    accounts: Mapping[str, Account]
+    limits: TransferLimits | None = None
+
+
+@dataclass(frozen=True)
+class TransferDerived:
+    """Pure values calculated from observed state."""
+
+    total_balance: int = 0
+
+
+@dataclass(frozen=True)
+class TransferGhost:
+    """Proof- or specification-only state — not recoverable from the DB."""
+
+    initial_total: int | None = None
+
+
+@dataclass(frozen=True)
+class TransferSpecState:
+    """The full contract-facing state, decomposed by provenance."""
+
+    observed: TransferObserved
+    derived: TransferDerived
+    ghost: TransferGhost = field(default_factory=TransferGhost)
 
 
 # ---------------------------------------------------------------------------
@@ -147,18 +167,25 @@ class TransferLimits:
 
 
 @predicate
-def account_exists(state: AccountState, account_id: str) -> bool:
-    return account_id in state.accounts
+def account_exists(state: TransferSpecState, account_id: str) -> bool:
+    return account_id in state.observed.accounts
 
 
 @predicate
-def has_sufficient_funds(state: AccountState, account_id: str, amount: int) -> bool:
-    return state.accounts[account_id].balance >= amount
+def has_sufficient_funds(
+    state: TransferSpecState, account_id: str, amount: int
+) -> bool:
+    return state.observed.accounts[account_id].balance >= amount
 
 
 @predicate
-def same_currency(state: AccountState, source_id: str, target_id: str) -> bool:
-    return state.accounts[source_id].currency == state.accounts[target_id].currency
+def same_currency(
+    state: TransferSpecState, source_id: str, target_id: str
+) -> bool:
+    return (
+        state.observed.accounts[source_id].currency
+        == state.observed.accounts[target_id].currency
+    )
 
 
 @predicate
@@ -170,140 +197,183 @@ def is_sorted_within(xs: list[int], lo: int, hi: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Preconditions — canonical Pre(state, args) -> bool, tagged by entry point
+# Preconditions (admissibility — true caller obligations)
 # ---------------------------------------------------------------------------
 
 
 @precondition(
-    entry_point=TRANSFER,
     from_gherkin='an account "<source>" with balance <source_balance>'
-    ' in currency "<currency>"',
+    ' in currency "<source_currency>"',
     feature=FEATURE,
 )
-def transfer_pre_valid_amount(state: AccountState, args: TransferArgs) -> bool:
+def transfer_pre_source_exists(
+    state: TransferSpecState, args: TransferArgs
+) -> bool:
+    return args.source_id in state.observed.accounts
+
+
+@precondition(
+    from_gherkin='an account "<target>" with balance <target_balance>'
+    ' in currency "<target_currency>"',
+    feature=FEATURE,
+)
+def transfer_pre_target_exists(
+    state: TransferSpecState, args: TransferArgs
+) -> bool:
+    return args.target_id in state.observed.accounts
+
+
+@precondition(
+    from_gherkin='funds of <amount> are transferred from "<source>" to "<target>"',
+    feature=FEATURE,
+)
+def transfer_pre_valid_amount(
+    state: TransferSpecState, args: TransferArgs
+) -> bool:
     return args.amount > 0
 
 
-@precondition(
-    entry_point=TRANSFER,
+# ---------------------------------------------------------------------------
+# Exception contracts — exception type → condition (axiomander raises/ORaise)
+# ---------------------------------------------------------------------------
+
+
+@exceptional(
+    exc_type=InsufficientFundsError,
     from_gherkin='an account "<source>" with balance <source_balance>'
-    ' in currency "<currency>"',
+    ' in currency "<source_currency>"',
     feature=FEATURE,
 )
-def transfer_pre_accounts_exist(state: AccountState, args: TransferArgs) -> bool:
-    return account_exists(state, args.source_id) and account_exists(
-        state, args.target_id
+def transfer_exc_insufficient_funds(
+    state: TransferSpecState, args: TransferArgs
+) -> bool:
+    return state.observed.accounts[args.source_id].balance < args.amount
+
+
+@exceptional(
+    exc_type=CurrencyMismatchError,
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<source_currency>"',
+    feature=FEATURE,
+)
+def transfer_exc_currency_mismatch(
+    state: TransferSpecState, args: TransferArgs
+) -> bool:
+    return (
+        state.observed.accounts[args.source_id].currency
+        != state.observed.accounts[args.target_id].currency
     )
 
 
-@precondition(
-    entry_point=TRANSFER,
-    from_gherkin='an account "<source>" with balance <source_balance>'
-    ' in currency "<currency>"',
+@exceptional(
+    exc_type=SimulatedFaultError,
+    from_gherkin="no account balances are changed when the transfer fails",
     feature=FEATURE,
 )
-def transfer_pre_sufficient_funds(state: AccountState, args: TransferArgs) -> bool:
-    if not account_exists(state, args.source_id):
-        return False
-    return has_sufficient_funds(state, args.source_id, args.amount)
-
-
-@precondition(
-    entry_point=TRANSFER,
-    from_gherkin='an account "<source>" with balance <source_balance>'
-    ' in currency "<currency>"',
-    feature=FEATURE,
-)
-def transfer_pre_same_currency(state: AccountState, args: TransferArgs) -> bool:
-    if not (
-        account_exists(state, args.source_id) and account_exists(state, args.target_id)
-    ):
-        return False
-    return same_currency(state, args.source_id, args.target_id)
+def transfer_exc_simulated_fault(
+    state: TransferSpecState, args: TransferArgs
+) -> bool:
+    return True  # fault is injected by the test harness — always applicable
 
 
 # ---------------------------------------------------------------------------
-# Postconditions — canonical Post(old_state, args, result, new_state) -> bool
+# Postconditions (transitions)
 # ---------------------------------------------------------------------------
 
 
 @postcondition(
-    entry_point=TRANSFER,
     from_gherkin="the total balance across all accounts is unchanged",
     feature=FEATURE,
 )
 def transfer_post_total_preserved(
-    old_s: AccountState,
+    old_s: TransferSpecState,
     args: TransferArgs,
-    result: TransferReceipt,
-    new_s: AccountState,
+    result: TransferReceipt | TransferError | Exception,
+    new_s: TransferSpecState,
 ) -> bool:
-    return old(sum(a.balance for a in old_s.accounts.values())) == sum(
-        a.balance for a in new_s.accounts.values()
-    )
+    return old(old_s.derived.total_balance) == new_s.derived.total_balance
 
 
 @postcondition(
-    entry_point=TRANSFER,
-    from_gherkin='the "<source>" balance decreased by <amount>',
+    from_gherkin="the source balance decreased by the transfer amount",
     feature=FEATURE,
 )
 def transfer_post_source_decreased(
-    old_s: AccountState,
+    old_s: TransferSpecState,
     args: TransferArgs,
-    result: TransferReceipt,
-    new_s: AccountState,
+    result: TransferReceipt | TransferError | Exception,
+    new_s: TransferSpecState,
 ) -> bool:
+    if not isinstance(result, TransferReceipt):
+        return True
     return (
-        new_s.accounts[args.source_id].balance
-        == old(old_s.accounts[args.source_id].balance) - args.amount
+        new_s.observed.accounts[args.source_id].balance
+        == old(old_s.observed.accounts[args.source_id].balance) - args.amount
     )
 
 
 @postcondition(
-    entry_point=TRANSFER,
-    from_gherkin='the "<target>" balance increased by <amount>',
+    from_gherkin="the target balance increased by the transfer amount",
     feature=FEATURE,
 )
 def transfer_post_target_increased(
-    old_s: AccountState,
+    old_s: TransferSpecState,
     args: TransferArgs,
-    result: TransferReceipt,
-    new_s: AccountState,
+    result: TransferReceipt | TransferError | Exception,
+    new_s: TransferSpecState,
 ) -> bool:
+    if not isinstance(result, TransferReceipt):
+        return True
     return (
-        new_s.accounts[args.target_id].balance
-        == old(old_s.accounts[args.target_id].balance) + args.amount
+        new_s.observed.accounts[args.target_id].balance
+        == old(old_s.observed.accounts[args.target_id].balance) + args.amount
     )
 
 
 @postcondition(
-    entry_point=TRANSFER,
     from_gherkin="all account balances are non-negative",
     feature=FEATURE,
 )
 def transfer_post_all_balances_non_negative(
-    old_s: AccountState,
+    old_s: TransferSpecState,
     args: TransferArgs,
-    result: TransferReceipt,
-    new_s: AccountState,
+    result: TransferReceipt | TransferError | Exception,
+    new_s: TransferSpecState,
 ) -> bool:
-    return forall(new_s.accounts.values(), lambda a: a.balance >= 0)
+    return forall(new_s.observed.accounts.values(), lambda a: a.balance >= 0)
+
+
+@postcondition(
+    from_gherkin="no account balances are changed when the transfer fails",
+    feature=FEATURE,
+)
+def transfer_post_error_preserves_state(
+    old_s: TransferSpecState,
+    args: TransferArgs,
+    result: TransferReceipt | TransferError | Exception,
+    new_s: TransferSpecState,
+) -> bool:
+    if isinstance(result, TransferReceipt):
+        return True
+    return (
+        old(old_s.observed.accounts[args.source_id].balance)
+        == new_s.observed.accounts[args.source_id].balance
+        and old(old_s.observed.accounts[args.target_id].balance)
+        == new_s.observed.accounts[args.target_id].balance
+    )
 
 
 # ---------------------------------------------------------------------------
-# Invariants — Inv(state) -> bool, tagged by entry point
+# Invariants
 # ---------------------------------------------------------------------------
 
 
 @invariant(
-    entry_point=TRANSFER,
-    from_gherkin='an account "<source>" with balance <source_balance>'
-    ' in currency "<currency>"',
+    from_gherkin="All account balances are non-negative at all times",
     feature=FEATURE,
 )
-def account_balance_non_negative(state: AccountState) -> bool:
-    return forall(state.accounts.values(), lambda a: a.balance >= 0)
+def account_balance_non_negative(state: TransferSpecState) -> bool:
+    return forall(state.observed.accounts.values(), lambda a: a.balance >= 0)
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +381,10 @@ def account_balance_non_negative(state: AccountState) -> bool:
 # ---------------------------------------------------------------------------
 
 
-@writes(entry_point=TRANSFER, feature=FEATURE)
+@writes(
+    from_gherkin='funds of <amount> are transferred from "<source>" to "<target>"',
+    feature=FEATURE,
+)
 def transfer_writes_frame() -> Frame:
     return Frame(
         writes={
@@ -322,7 +395,10 @@ def transfer_writes_frame() -> Frame:
     )
 
 
-@reads(entry_point=TRANSFER, feature=FEATURE)
+@reads(
+    from_gherkin='funds of <amount> are transferred from "<source>" to "<target>"',
+    feature=FEATURE,
+)
 def transfer_reads_frame() -> Frame:
     return Frame(
         reads={
@@ -330,7 +406,7 @@ def transfer_reads_frame() -> Frame:
             Field("target.balance"),
             Field("source.currency"),
             Field("target.currency"),
-            Field("ghost.daily_remaining"),
+            Field("observed.limits.daily_remaining"),
         }
     )
 
@@ -340,7 +416,10 @@ def transfer_reads_frame() -> Frame:
 # ---------------------------------------------------------------------------
 
 
-@effect(entry_point=TRANSFER, feature=FEATURE)
+@effect(
+    from_gherkin='funds of <amount> are transferred from "<source>" to "<target>"',
+    feature=FEATURE,
+)
 def transfer_effect() -> EffectSpec:
     return EffectSpec(
         uses={"database"},

@@ -34,7 +34,7 @@ def test_single_precondition_python():
     class AddArgs(Args):
         x: int
 
-    @precondition(entry_point="add")
+    @precondition(feature="add")
     def add_pre_positive(state: object, args: AddArgs) -> bool:
         return args.x > 0
 
@@ -47,11 +47,11 @@ def test_multiple_preconditions_conjoined_python():
     class AddArgs(Args):
         x: int
 
-    @precondition(entry_point="add2")
+    @precondition(feature="add2")
     def add2_pre_positive(state: object, args: AddArgs) -> bool:
         return args.x > 0
 
-    @precondition(entry_point="add2")
+    @precondition(feature="add2")
     def add2_pre_lt_100(state: object, args: AddArgs) -> bool:
         return args.x < 100
 
@@ -67,7 +67,7 @@ def test_single_precondition_math():
     class AddArgs(Args):
         x: int
 
-    @precondition(entry_point="add_math")
+    @precondition(feature="add_math")
     def add_math_pre(state: object, args: AddArgs) -> bool:
         return args.x > 0
 
@@ -80,11 +80,11 @@ def test_conjunction_uses_math_symbol():
     class AddArgs(Args):
         x: int
 
-    @precondition(entry_point="math_conj")
+    @precondition(feature="math_conj")
     def math_conj_a(state: object, args: AddArgs) -> bool:
         return args.x > 0
 
-    @precondition(entry_point="math_conj")
+    @precondition(feature="math_conj")
     def math_conj_b(state: object, args: AddArgs) -> bool:
         return args.x < 100
 
@@ -99,7 +99,7 @@ def test_math_unicode_operators():
     class CmpArgs(Args):
         x: int
 
-    @precondition(entry_point="cmp")
+    @precondition(feature="cmp")
     def cmp_pre(state: object, args: CmpArgs) -> bool:
         return args.x >= 0 and args.x <= 10 and args.x != 5
 
@@ -119,7 +119,7 @@ def test_math_quantifiers():
     class QState:
         values: list
 
-    @precondition(entry_point="q")
+    @precondition(feature="q")
     def q_pre(state: QState, args: QArgs) -> bool:
         from specsaver import forall
 
@@ -140,7 +140,7 @@ def test_postcondition_math():
     class SubResult(Result):
         ok: bool
 
-    @postcondition(entry_point="sub")
+    @postcondition(feature="sub")
     def sub_post(old_s, args: SubArgs, result: SubResult, new_s) -> bool:
         return result.ok
 
@@ -153,7 +153,7 @@ def test_invariant_math():
     class IVState:
         value: int
 
-    @invariant(entry_point="inv_test")
+    @invariant(feature="inv_test")
     def inv_test(state: IVState) -> bool:
         return state.value >= 0
 
@@ -167,7 +167,7 @@ def test_render_contract_structure():
     class SimpleArgs(Args):
         x: int
 
-    @precondition(entry_point="struct")
+    @precondition(feature="struct")
     def struct_pre(state: object, args: SimpleArgs) -> bool:
         return args.x > 0
 
@@ -183,11 +183,11 @@ def test_render_all_multiple_entry_points():
     class AArgs(Args):
         x: int
 
-    @precondition(entry_point="epa")
+    @precondition(feature="epa")
     def epa_pre(state: object, args: AArgs) -> bool:
         return args.x > 0
 
-    @precondition(entry_point="epb")
+    @precondition(feature="epb")
     def epb_pre(state: object, args: AArgs) -> bool:
         return args.x < 0
 
@@ -207,7 +207,7 @@ def test_contract_with_not_operator_math():
     class NotArgs(Args):
         flag: bool
 
-    @precondition(entry_point="not_test")
+    @precondition(feature="not_test")
     def not_test_pre(state: object, args: NotArgs) -> bool:
         return not args.flag
 
@@ -221,7 +221,7 @@ def test_quantifier_with_exists():
     class ExArgs(Args):
         xs: list
 
-    @precondition(entry_point="ex")
+    @precondition(feature="ex")
     def ex_pre(state: object, args: ExArgs) -> bool:
         from specsaver import exists
 

@@ -133,7 +133,8 @@ class ContractRegistry:
                     f"{existing.__qualname__} as its canonical Args type; "
                     f"got {args_type.__qualname__} instead"
                 )
-            self._entry_point_args_type[entry_point] = args_type
+            if existing is None:
+                self._entry_point_args_type[entry_point] = args_type
 
     def register_result_type(self, entry_point: str, result_type: type) -> None:
         """Record the canonical Result subtype for an entry point.
@@ -149,7 +150,8 @@ class ContractRegistry:
                     f"{existing.__qualname__} as its canonical Result type; "
                     f"got {result_type.__qualname__} instead"
                 )
-            self._entry_point_result_type[entry_point] = result_type
+            if existing is None:
+                self._entry_point_result_type[entry_point] = result_type
 
     def args_type_for(self, entry_point: str) -> type | None:
         return self._entry_point_args_type.get(entry_point)
@@ -168,6 +170,15 @@ class ContractRegistry:
 
     def list_by_module(self, module: str) -> list[ContractRecord]:
         return [r for r in self._contracts.values() if r.module == module]
+
+    def list_by_feature_and_kind(
+        self, feature: str, kind: ContractKind
+    ) -> list[ContractRecord]:
+        return [
+            r
+            for r in self._contracts.values()
+            if r.feature == feature and r.kind == kind
+        ]
 
     def clear(self) -> None:
         with self._lock:

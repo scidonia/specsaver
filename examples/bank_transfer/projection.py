@@ -1,0 +1,337 @@
+"""Projection and refinement bridge for the bank transfer domain.
+
+This module is the coupling layer between the concrete execution world
+(SQLite database) and the abstract specification state (TransferSpecState).
+
+It replaces the old fixtures.py with the symmetric architecture:
+  - materialize(witness) → ExecutionContext  (write abstract → concrete)
+  - snapshot(context) → SpecState            (read concrete → abstract)
+
+The same snapshot is used before AND after execution (symmetry requirement).
+
+Exports ``TransferScenarioRunner`` — the single entry point that bundles
+all domain-specific wiring (witness builder, materializer, projection, impl).
+Both the CLI (``--verify`` / ``--pre-only``) and pytest tests consume it.
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+import tempfile
+from dataclasses import dataclass, field
+from typing import Any
+
+from examples.bank_transfer.contracts import (
+    Account,
+    SimulatedFaultError,
+    TransferArgs,
+    TransferDerived,
+    TransferGhost,
+    TransferLimits,
+    TransferObserved,
+    TransferSpecState,
+)
+
+# ---------------------------------------------------------------------------
+# ExecutionContext — the concrete execution world
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TransferExecutionContext:
+    """The concrete world the implementation operates on."""
+
+    db_path: str
+    trace: list[str] = field(default_factory=list)
+    ghost: TransferGhost = field(default_factory=TransferGhost)
+
+
+# ---------------------------------------------------------------------------
+# ScenarioWitness — abstract initial state + args from a Gherkin row
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TransferScenarioWitness:
+    """Produced from a Gherkin Examples row by build_witness."""
+
+    accounts: dict[str, Account]
+    limits: TransferLimits | None
+    args: TransferArgs
+    ghost: TransferGhost = field(default_factory=TransferGhost)
+
+
+# ---------------------------------------------------------------------------
+# Database schema helpers
+# ---------------------------------------------------------------------------
+
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    balance INTEGER NOT NULL,
+    currency TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS limits (
+    key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
+"""
+
+
+def _populate(conn: sqlite3.Connection, accounts: dict[str, Account],
+              limits: TransferLimits | None) -> None:
+    conn.execute("DELETE FROM accounts")
+    conn.execute("DELETE FROM limits")
+    for acc in accounts.values():
+        conn.execute(
+            "INSERT INTO accounts (id, balance, currency) VALUES (?, ?, ?)",
+            (acc.id, acc.balance, acc.currency),
+        )
+    if limits is not None:
+        if limits.per_transfer_max is not None:
+            conn.execute(
+                "INSERT INTO limits (key, value) VALUES (?, ?)",
+                ("per_transfer_max", limits.per_transfer_max),
+            )
+        if limits.daily_remaining is not None:
+            conn.execute(
+                "INSERT INTO limits (key, value) VALUES (?, ?)",
+                ("daily_remaining", limits.daily_remaining),
+            )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Materializer — witness → ExecutionContext
+# ---------------------------------------------------------------------------
+
+
+class TransferMaterializer:
+    """Creates a concrete ExecutionContext (temp SQLite DB) from a witness."""
+
+    def materialize(self, witness: TransferScenarioWitness) -> TransferExecutionContext:
+        fd, path = tempfile.mkstemp(suffix=".db", prefix="specsaver_")
+        os.close(fd)
+        with sqlite3.connect(path) as conn:
+            conn.executescript(_SCHEMA)
+            _populate(conn, witness.accounts, witness.limits)
+        return TransferExecutionContext(
+            db_path=path,
+            trace=[],
+            ghost=witness.ghost,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Projection — ExecutionContext → immutable SpecState (symmetric)
+# ---------------------------------------------------------------------------
+
+
+class TransferProjection:
+    """Projects the execution context into an immutable SpecState.
+
+    Used symmetrically: before execution (pre-state) and after execution
+    (post-state).  Same function, same schema, same interpretation.
+    """
+
+    def snapshot(self, context: TransferExecutionContext) -> TransferSpecState:
+        with sqlite3.connect(context.db_path) as conn:
+            account_rows = conn.execute(
+                "SELECT id, balance, currency FROM accounts"
+            ).fetchall()
+            limit_rows = conn.execute(
+                "SELECT key, value FROM limits"
+            ).fetchall()
+
+        accounts: dict[str, Account] = {
+            row[0]: Account(id=row[0], balance=row[1], currency=row[2])
+            for row in account_rows
+        }
+
+        limits: TransferLimits | None = None
+        if limit_rows:
+            d = dict(limit_rows)
+            limits = TransferLimits(
+                per_transfer_max=d.get("per_transfer_max"),
+                daily_remaining=d.get("daily_remaining"),
+            )
+
+        observed = TransferObserved(accounts=accounts, limits=limits)
+        derived = TransferDerived(
+            total_balance=sum(a.balance for a in accounts.values())
+        )
+
+        return TransferSpecState(
+            observed=observed,
+            derived=derived,
+            ghost=context.ghost,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Witness builder — Gherkin Examples row → ScenarioWitness
+# ---------------------------------------------------------------------------
+
+
+def build_witness(row: dict[str, str]) -> TransferScenarioWitness:
+    """Map a Gherkin Examples row to a ScenarioWitness."""
+    source_id = row["source"]
+    target_id = row["target"]
+    amount = int(row["amount"])
+    source_currency = row["source_currency"]
+    target_currency = row["target_currency"]
+
+    accounts: dict[str, Account] = {}
+    accounts[source_id] = Account(
+        id=source_id,
+        balance=int(row["source_balance"]),
+        currency=source_currency,
+    )
+    if row.get("target_balance"):
+        accounts[target_id] = Account(
+            id=target_id,
+            balance=int(row["target_balance"]),
+            currency=target_currency,
+        )
+
+    limits: TransferLimits | None = None
+    per_transfer_limit = row.get("per_transfer_limit", "")
+    if per_transfer_limit:
+        limits = TransferLimits(per_transfer_max=int(per_transfer_limit))
+
+    args = TransferArgs(source_id=source_id, target_id=target_id, amount=amount)
+
+    return TransferScenarioWitness(
+        accounts=accounts,
+        limits=limits,
+        args=args,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cleanup helper
+# ---------------------------------------------------------------------------
+
+
+def cleanup(context: TransferExecutionContext) -> None:
+    """Remove the temp database after a test."""
+    if os.path.exists(context.db_path):
+        os.unlink(context.db_path)
+
+
+# ---------------------------------------------------------------------------
+# Scenario runner — single export that bundles all domain wiring
+# ---------------------------------------------------------------------------
+# Both the CLI (--verify / --pre-only) and pytest tests consume this
+# runner, so the wiring lives in exactly one place per domain.
+
+
+class _FaultState:
+    def __init__(self) -> None:
+        self.pending: str | None = None
+
+    def inject(self, fault_name: str) -> None:
+        self.pending = fault_name
+
+    def consume(self) -> str | None:
+        f = self.pending
+        self.pending = None
+        return f
+
+
+class _FaultableTransferService:
+    def __init__(self, inner: Any = None) -> None:
+        from examples.bank_transfer.service import TransferService
+
+        self._inner = inner or TransferService()
+
+    def execute(self, context, args):
+        fault = _fault_state.consume()
+        if fault == "simulated_fault":
+            raise SimulatedFaultError(
+                source_id=args.source_id,
+                target_id=args.target_id,
+                amount=args.amount,
+                message="Simulated runtime fault",
+            )
+        return self._inner.execute(context, args)
+
+
+_fault_state = _FaultState()
+
+
+class TransferScenarioRunner:
+    """Bundles the domain wiring needed to run a scenario.
+
+    A single instance is shared by the CLI ``--verify`` / ``--pre-only``
+    commands and the pytest tests — no duplication.
+    """
+
+    def __init__(self, feature_path: str, scenario_name: str) -> None:
+        self._feature_path = feature_path
+        self._scenario_name = scenario_name
+        self._materializer = TransferMaterializer()
+        self._projection = TransferProjection()
+        self._impl = _FaultableTransferService()
+        self._fault_state = _fault_state
+
+    def run(self, row: dict[str, str]) -> tuple[bool, str]:
+        """Full symmetric flow with implementation.
+
+        Returns (passed, message) — consumed by the CLI and by tests.
+        """
+        from specsaver import SpecScenario, run_scenario
+
+        scenario = SpecScenario.from_feature(self._feature_path, self._scenario_name)
+        witness = build_witness(row)
+        context = self._materializer.materialize(witness)
+        try:
+            run_scenario(
+                scenario,
+                witness,
+                materializer=self._materializer,
+                projection=self._projection,
+                impl=self._impl,
+                fault_injector=self._fault_state,
+                fault_name=row.get("fault"),
+                outcome=row.get("outcome"),
+            )
+            return True, "PASS"
+        except Exception as exc:
+            return False, str(exc)
+        finally:
+            cleanup(context)
+
+    def check_pre(self, row: dict[str, str]) -> tuple[bool, str]:
+        """Check admissibility + invariants only — no implementation needed.
+
+        Useful during specification authoring, before any impl exists.
+        """
+        from specsaver import SpecScenario, run_scenario
+
+        scenario = SpecScenario.from_feature(self._feature_path, self._scenario_name)
+        witness = build_witness(row)
+        result = run_scenario(
+            scenario,
+            witness,
+            materializer=self._materializer,
+            projection=self._projection,
+            impl=None,
+            outcome=row.get("outcome"),
+        )
+        outcome = row.get("outcome", "")
+        if outcome == "rejected":
+            if result.admissibility_held:
+                return False, "FAIL: expected rejection but admissibility held"
+            return True, "REJECTED (pre-only)"
+        elif outcome == "success":
+            if not result.admissibility_held:
+                return False, f"FAIL: {result.describe_failures()}"
+            return True, "PASS (pre-only)"
+        elif outcome and outcome.startswith("error:"):
+            if not result.admissibility_held:
+                return False, f"FAIL: {result.describe_failures()}"
+            return True, "ADMISSIBLE (pre-only)"
+        return True, "OK (pre-only)"
