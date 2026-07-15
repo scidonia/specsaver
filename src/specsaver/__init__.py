@@ -24,6 +24,14 @@ from specsaver.registry import (
     ProofStatus,
     get_registry,
 )
+from specsaver.render import (
+    render_all,
+    render_contract,
+    render_entry_point,
+    render_invariant,
+    render_postcondition,
+    render_precondition,
+)
 from specsaver.temporal import old, unchanged
 from specsaver.types import ContractKind, EffectSpec, Event, Field, Frame
 from specsaver.verify import (
@@ -81,4 +89,11 @@ __all__ = [
     "check_invariants",
     "run_entry_point",
     "bind_call",
+    # rendering
+    "render_precondition",
+    "render_postcondition",
+    "render_invariant",
+    "render_contract",
+    "render_entry_point",
+    "render_all",
 ]

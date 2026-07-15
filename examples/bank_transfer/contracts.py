@@ -48,6 +48,41 @@ FEATURE = "transfer.feature"
 TRANSFER = "transfer"
 
 
+def _build_transfer_test(row: dict[str, str]):
+    """Build (state, args, impl) from a Gherkin Examples row.
+
+    Used by `specsaver trace --verify` to auto-run tests.  Missing
+    columns (e.g. ``target_balance`` for non-existent-account rows)
+    silently skip that account.
+    """
+    source_id = row["source"]
+    target_id = row["target"]
+    amount = int(row["amount"])
+    currency = row["currency"]
+
+    accounts: dict[str, Account] = {}
+    accounts[source_id] = Account(
+        id=source_id, balance=int(row["source_balance"]), currency=currency
+    )
+    if "target_balance" in row:
+        accounts[target_id] = Account(
+            id=target_id, balance=int(row["target_balance"]), currency=currency
+        )
+
+    state = AccountState(accounts=accounts)
+    args = TransferArgs(source_id=source_id, target_id=target_id, amount=amount)
+
+    from examples.bank_transfer.service import TransferService
+
+    impl = TransferService().transfer
+    return state, args, impl
+
+
+__trace_runner__ = {
+    TRANSFER: _build_transfer_test,
+}
+
+
 # ---------------------------------------------------------------------------
 # Domain types
 # ---------------------------------------------------------------------------
@@ -141,7 +176,8 @@ def is_sorted_within(xs: list[int], lo: int, hi: int) -> bool:
 
 @precondition(
     entry_point=TRANSFER,
-    from_gherkin="Given an account with balance",
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<currency>"',
     feature=FEATURE,
 )
 def transfer_pre_valid_amount(state: AccountState, args: TransferArgs) -> bool:
@@ -150,7 +186,8 @@ def transfer_pre_valid_amount(state: AccountState, args: TransferArgs) -> bool:
 
 @precondition(
     entry_point=TRANSFER,
-    from_gherkin="Given an account with balance",
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<currency>"',
     feature=FEATURE,
 )
 def transfer_pre_accounts_exist(state: AccountState, args: TransferArgs) -> bool:
@@ -161,7 +198,8 @@ def transfer_pre_accounts_exist(state: AccountState, args: TransferArgs) -> bool
 
 @precondition(
     entry_point=TRANSFER,
-    from_gherkin="Given an account with balance",
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<currency>"',
     feature=FEATURE,
 )
 def transfer_pre_sufficient_funds(state: AccountState, args: TransferArgs) -> bool:
@@ -172,7 +210,8 @@ def transfer_pre_sufficient_funds(state: AccountState, args: TransferArgs) -> bo
 
 @precondition(
     entry_point=TRANSFER,
-    from_gherkin="Given an account with balance",
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<currency>"',
     feature=FEATURE,
 )
 def transfer_pre_same_currency(state: AccountState, args: TransferArgs) -> bool:
@@ -190,7 +229,7 @@ def transfer_pre_same_currency(state: AccountState, args: TransferArgs) -> bool:
 
 @postcondition(
     entry_point=TRANSFER,
-    from_gherkin="Then the total balance across all accounts is unchanged",
+    from_gherkin="the total balance across all accounts is unchanged",
     feature=FEATURE,
 )
 def transfer_post_total_preserved(
@@ -206,7 +245,7 @@ def transfer_post_total_preserved(
 
 @postcondition(
     entry_point=TRANSFER,
-    from_gherkin="Then the source account balance decreased",
+    from_gherkin='the "<source>" balance decreased by <amount>',
     feature=FEATURE,
 )
 def transfer_post_source_decreased(
@@ -223,7 +262,7 @@ def transfer_post_source_decreased(
 
 @postcondition(
     entry_point=TRANSFER,
-    from_gherkin="Then the target account balance increased",
+    from_gherkin='the "<target>" balance increased by <amount>',
     feature=FEATURE,
 )
 def transfer_post_target_increased(
@@ -240,7 +279,7 @@ def transfer_post_target_increased(
 
 @postcondition(
     entry_point=TRANSFER,
-    from_gherkin="Then all account balances are non-negative",
+    from_gherkin="all account balances are non-negative",
     feature=FEATURE,
 )
 def transfer_post_all_balances_non_negative(
@@ -259,7 +298,8 @@ def transfer_post_all_balances_non_negative(
 
 @invariant(
     entry_point=TRANSFER,
-    from_gherkin="Given an account with balance",
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<currency>"',
     feature=FEATURE,
 )
 def account_balance_non_negative(state: AccountState) -> bool:

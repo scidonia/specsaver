@@ -1,18 +1,36 @@
-[project]
-name = "specsaver"
-version = "0.1.0"
-description = "Specification-driven verification: one source of semantic truth"
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "gherkin-official>=41.0.0",
-    "pytest>=8.4.2",
-    "typer>=0.16.0",
-]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[project]
+name = "specsaver"
+version = "0.1.0"
+description = "Specification-driven verification: contracts as the single source of semantic truth"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Gavin Mendel-Gleason", email = "gavin@scidonia.ai" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "gherkin-official>=41.0.0",
+    "rich>=13.0.0",
+    "typer>=0.16.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.2",
+    "ruff>=0.15.21",
+]
+
+[project.urls]
+Homepage = "https://github.com/scidonia/specsaver"
+Repository = "https://github.com/scidonia/specsaver"
 
 [project.scripts]
 specsaver = "specsaver.cli:main"
@@ -26,8 +44,3 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4"]
 ignore = ["UP047"]
-
-[dependency-groups]
-dev = [
-    "ruff>=0.15.21",
-]

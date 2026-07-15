@@ -247,7 +247,7 @@ def test_contracts_carry_gherkin_origin():
 
     registry = get_registry()
 
-    total_step = "Then the total balance across all accounts is unchanged"
+    total_step = "the total balance across all accounts is unchanged"
     derived = registry.list_by_gherkin(total_step)
     assert len(derived) >= 1, f"No contracts for: {total_step}"
     assert any("transfer_post_total_preserved" in r.identifier for r in derived), (
@@ -277,9 +277,11 @@ def test_gherkin_step_resolves_to_contracts():
 
     registry = get_registry()
 
-    # "Given an account with balance" resolves to
-    # 4 preconditions + 1 invariant
-    given_step = "Given an account with balance"
+    # 'an account "<source>" with balance <source_balance> in currency
+    # "<currency>" resolves to 4 preconditions + 1 invariant
+    given_step = (
+        'an account "<source>" with balance <source_balance> in currency "<currency>"'
+    )
     derived = registry.list_by_gherkin(given_step)
     assert len(derived) >= 4, (
         f"'{given_step}' should resolve to >=4 contracts, got {len(derived)}: "
