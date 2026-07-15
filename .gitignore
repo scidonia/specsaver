@@ -1,0 +1,9 @@
+.direnv/
+result
+__pycache__/
+.venv/
+.env.profile
+*.swp
+#*
+.ruff_cache/
+*.pyc
