@@ -71,6 +71,9 @@
           workspaceRoot = ./.;
           python = pkgs.python312;
           extraPackages = [pkgs.python3 pkgs.ruff];
+          editableFilterSet = [
+            ./LICENSE
+          ];
         };
       };
     };
