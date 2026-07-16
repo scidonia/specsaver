@@ -210,7 +210,7 @@ def _indent_lines(parts: list[str], level: int) -> list[str]:
         return [f"{prefix}{parts[0]}"]
     result = [f"{prefix}{parts[0]}"]
     for p in parts[1:]:
-        result.append(f"{prefix}  [dim]∧[/] {p}")
+        result.append(f"{prefix}  [#FFBF00]∧[/] {p}")
     return result
 
 
@@ -289,6 +289,10 @@ class _BaseRenderer(ast.NodeVisitor):
         return isinstance(node.func, ast.Name) and node.func.id == name
 
     @staticmethod
+    def _is_implies_call(node: ast.Call) -> bool:
+        return isinstance(node.func, ast.Name) and node.func.id == "implies"
+
+    @staticmethod
     def _lambda_arg(node: ast.Call) -> ast.arg:
         lam = node.args[1]
         assert isinstance(lam, ast.Lambda)
@@ -306,7 +310,10 @@ class _BaseRenderer(ast.NodeVisitor):
 
     def _render_bool_op(self, node: ast.BoolOp, and_word: str, paren_word: str) -> str:
         parts = [self.visit(v) for v in node.values]
-        op = and_word if isinstance(node.op, ast.And) else paren_word
+        if isinstance(node.op, ast.And):
+            op = f" [#FFBF00]{and_word}[/] "
+        else:
+            op = f" [#FFBF00]{paren_word}[/] "
         pieces = []
         for v, p in zip(node.values, parts, strict=True):
             if isinstance(v, ast.BoolOp):
@@ -338,6 +345,10 @@ class _PythonRenderer(_BaseRenderer):
             body = self.visit(self._lambda_body(node))
             param = self._lambda_arg(node).arg
             return f"exists({domain}, lambda {param}: {body})"
+        if self._is_implies_call(node):
+            p = self.visit(node.args[0])
+            q = self.visit(node.args[1])
+            return f"({p} → {q})"
         if self._is_old_call(node):
             return self._visit_old(node)
         return ast.unparse(node)
@@ -360,7 +371,7 @@ class _MathRenderer(_BaseRenderer):
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> str:
         if isinstance(node.op, ast.Not):
-            return f"¬({self.visit(node.operand)})"
+            return f"[#FFBF00]¬[/]({self.visit(node.operand)})"
         return ast.unparse(node)
 
     def visit_Compare(self, node: ast.Compare) -> str:
@@ -394,6 +405,10 @@ class _MathRenderer(_BaseRenderer):
                 f"[#FFBF00]∃[/] {param} "
                 f"[bright_blue]∈[/] [bright_blue]{domain}[/]. {body}"
             )
+        if self._is_implies_call(node):
+            p = self.visit(node.args[0])
+            q = self.visit(node.args[1])
+            return f"({p} [#FFBF00]⇒[/] {q})"
         if self._is_old_call(node):
             return self._visit_old(node)
         return ast.unparse(node)
@@ -409,9 +424,9 @@ class _MathRenderer(_BaseRenderer):
 
     def visit_Constant(self, node: ast.Constant) -> str:
         if node.value is True:
-            return "⊤"
+            return "[#FFBF00]⊤[/]"
         if node.value is False:
-            return "⊥"
+            return "[#FFBF00]⊥[/]"
         return ast.unparse(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> str:
@@ -434,35 +449,35 @@ class _MathRenderer(_BaseRenderer):
 
 def _math_op(op: ast.cmpop) -> str:
     if isinstance(op, ast.Gt):
-        return ">"
+        return "[#FFBF00]>[/]"
     if isinstance(op, ast.Lt):
-        return "<"
+        return "[#FFBF00]<[/]"
     if isinstance(op, ast.GtE):
-        return "≥"
+        return "[#FFBF00]≥[/]"
     if isinstance(op, ast.LtE):
-        return "≤"
+        return "[#FFBF00]≤[/]"
     if isinstance(op, ast.Eq):
-        return "="
+        return "[#FFBF00]=[/]"
     if isinstance(op, ast.NotEq):
-        return "≠"
+        return "[#FFBF00]≠[/]"
     if isinstance(op, ast.In):
-        return "∈"
+        return "[bright_blue]∈[/]"
     if isinstance(op, ast.NotIn):
-        return "∉"
+        return "[bright_blue]∉[/]"
     return ast.unparse(op)
 
 
 def _bin_op(op: ast.operator) -> str:
     if isinstance(op, ast.Add):
-        return "+"
+        return "[#FFBF00]+[/]"
     if isinstance(op, ast.Sub):
-        return "−"
+        return "[#FFBF00]−[/]"
     if isinstance(op, ast.Mult):
-        return "·"
+        return "[#FFBF00]·[/]"
     if isinstance(op, ast.Div):
-        return "÷"
+        return "[#FFBF00]÷[/]"
     if isinstance(op, ast.FloorDiv):
         return "//"
     if isinstance(op, ast.Mod):
-        return "mod"
+        return "[#FFBF00]mod[/]"
     return ast.unparse(op)

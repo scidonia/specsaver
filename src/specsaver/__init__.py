@@ -17,6 +17,7 @@ from specsaver.contract import (
     writes,
 )
 from specsaver.ghost_state import GhostState
+from specsaver.logic import implies
 from specsaver.protocols import (
     ExecutionContext,
     FaultInjector,
@@ -87,6 +88,7 @@ __all__ = [
     # temporal
     "old",
     "unchanged",
+    "implies",
     # registry
     "ContractRecord",
     "ContractRegistry",

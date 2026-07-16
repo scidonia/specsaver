@@ -3,14 +3,21 @@
 ## 1. Overview
 
 The contract language is a **pure, typed fragment of Python** used to express
-the semantic content of preconditions, postconditions, frame conditions,
-invariants, and effect specifications.
+the semantic content of preconditions (admissibility), postconditions
+(transitions), invariants, exception contracts (raises/ORaise), frame
+conditions, and effect specifications.
 
 Every contract construct is executable Python.  It is also statically
 analysable: its AST is the input to SMT translation, proof generation, and
 property-based test generation.  The contract language is the **single source of
 semantic truth** — no testing or verification artifact may introduce
 independent semantics.
+
+Contracts are grouped by **feature** (the Gherkin ``.feature`` filename)
+and traceable to specific Gherkin steps via the ``from_gherkin`` parameter.
+The ``SpecScenario`` assembler produces the full contract for one scenario
+by cross-referencing Gherkin step text against the registry.  See the
+*Specification-Driven Testing Architecture* document for the full design.
 
 ---
 
@@ -178,136 +185,141 @@ def collatz_steps(n: int) -> int:
 ## 4. Contracts
 
 Every operation is described by a bundle of named semantic propositions.
-
-### 4.1 Preconditions
-
-A **precondition** is a pure predicate over the operation's input arguments and
-the current state:
-
-```
-Pre(state: S, args: A) -> bool
-```
-
-Where `S` is the state type of the owning component and `A` is the **Args**
-type of the operation (§4.4) — a single structured input object, not a
-scattered argument list.
+Contracts are grouped by **feature** (the ``.feature`` filename, e.g.
+``"transfer.feature"``) rather than by an arbitrary operation name.  This
+is what makes the full contract for an operation *discoverable as a set*:
 
 ```python
-@precondition(entry_point="transfer")
-def transfer_pre_valid_amount(state: AccountState, args: TransferArgs) -> bool:
-    return args.amount > 0 and args.amount <= state.source.balance
+registry.list_by_feature_and_kind("transfer.feature", ContractKind.PRECONDITION)
+registry.list_by_feature_and_kind("transfer.feature", ContractKind.POSTCONDITION)
+registry.list_by_feature_and_kind("transfer.feature", ContractKind.INVARIANT)
 ```
 
-### 4.2 Postconditions
+Each contract carries a ``from_gherkin`` string matching the Gherkin
+step text it flows from, and a ``feature`` naming the file it belongs to.
+One-to-one association is canonical — no shared implici
+t ANDs between
+contracts.
 
-A **postcondition** is a pure predicate relating the old state, the input, the
-result, and the new state:
+### 4.1 Preconditions (Admissibility)
+
+A **precondition** is a pure predicate over the current **SpecState** and
+the operation's input.  These are *caller obligations* — if they fail,
+the implementation is never invoked (``outcome: rejected`` in the
+Gherkin).
 
 ```
-Post(old_state: S, args: A, result: R, new_state: S) -> bool
+Pre(state: SpecState, args: Args) -> bool
 ```
-
-Where `R` is the **Result** type of the operation (§4.4) — a single
-structured output object, not multiple return values.
 
 ```python
-@postcondition(entry_point="transfer")
-def transfer_post_total_preserved(
-    old_s: AccountState, args: TransferArgs, result: TransferReceipt, new_s: AccountState
+@precondition(
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<source_currency>"',
+    feature="transfer.feature",
+)
+def transfer_pre_source_exists(
+    state: TransferSpecState, args: TransferArgs
 ) -> bool:
-    return (
-        old_s.source.balance + old_s.target.balance
-        == new_s.source.balance + new_s.target.balance
-    )
+    return args.source_id in state.observed.accounts
+```
+
+### 4.2 Postconditions (Transitions)
+
+A **postcondition** is a pure predicate relating the old state, the
+input, the result, and the new state:
+
+```
+Post(old_state: SpecState, args: Args, result: Result | Exception, new_state: SpecState) -> bool
+```
+
+Postconditions self-guard on result type — success-only postconditions
+return ``True`` for error outcomes, and vice versa:
+
+```python
+@postcondition(
+    from_gherkin="the source balance decreased by the transfer amount",
+    feature="transfer.feature",
+)
+def transfer_post_source_decreased(
+    old_s: TransferSpecState,
+    args: TransferArgs,
+    result: TransferReceipt | TransferError,
+    new_s: TransferSpecState,
+) -> bool:
+    if not isinstance(result, TransferReceipt):
+        return True   # only applies to successful transfers
+    return new_s.observed.accounts[args.source_id].balance == ...
 ```
 
 ### 4.3 Invariants
 
-An **invariant** is a predicate over a single state that holds at every visible
-quiescent point:
+An **invariant** is a predicate over a single state that holds at every
+visible quiescent point.  Invariants attach to Gherkin ``Rule:`` text,
+not to individual Given/When/Then steps:
+
+```python
+@invariant(
+    from_gherkin="All account balances are non-negative at all times",
+    feature="transfer.feature",
+)
+def account_balance_non_negative(state: TransferSpecState) -> bool:
+    return forall(state.observed.accounts.values(), lambda a: a.balance >= 0)
+```
+
+### 4.4 Exception Contracts
+
+An **exception contract** (``@exceptional``) declares that a specific
+Python exception type is raised under a specific condition.  This follows
+axiomander's ``raises(ExcType, condition)`` pattern:
 
 ```
-Inv(state: S) -> bool
+Exceptional: (state: SpecState, args: Args) -> bool
 ```
 
 ```python
-@invariant
-def account_balance_non_negative(state: AccountState) -> bool:
-    return all(a.balance >= 0 for a in state.accounts.values())
+@exceptional(
+    exc_type=InsufficientFundsError,
+    from_gherkin='an account "<source>" with balance <source_balance>'
+    ' in currency "<source_currency>"',
+    feature="transfer.feature",
+)
+def transfer_exc_insufficient_funds(
+    state: TransferSpecState, args: TransferArgs
+) -> bool:
+    return state.observed.accounts[args.source_id].balance < args.amount
 ```
 
-Invariants may reference **ghost state** (see §7).  An invariant must be
-re-established after every operation that modifies the owning component.
+The exception type's ``code`` class attribute (e.g.
+``InsufficientFundsError.code = "INSUFFICIENT_FUNDS"``) bridges the
+exception class to the Gherkin ``outcome: error:INSUFFICIENT_FUNDS``
+column.  At runtime the runner catches exceptions, matches them to
+``@exceptional`` contracts by code, and verifies the condition held.
 
-### 4.4 Entry Points and Canonical Signatures
+Exception contracts are distinct from preconditions: preconditions block
+execution; exception contracts describe outcomes that occur *after*
+admissibility is satisfied.
 
-Every contract may declare the **entry point** (operation) it belongs to via
-`entry_point="<name>"`.  This is what makes the full contract for an
-operation *discoverable as a set*, rather than a naming convention a test
-author has to remember:
+### 4.5 Canonical Signatures
 
-```python
-registry.preconditions_for("transfer")   # -> every precondition for `transfer`
-registry.postconditions_for("transfer")  # -> every postcondition for `transfer`
-registry.invariants_for("transfer")      # -> every invariant tagged for `transfer`
-```
+Every precondition/postcondition/invariant/exceptional shares the same
+parameter structure, making the full contract callable uniformly by the
+scenario runner:
 
-For this to work, **every precondition/postcondition sharing an
-`entry_point` must use the same input and output types.**  No matter how
-many fields an operation's input has — ten, or a hundred — the contract
-signature never grows past `Pre(state, args)` / `Post(old_state, args,
-result, new_state)`.  Additional data is encoded as fields on a single
-**Args** (input) and **Result** (output) object:
+| Kind           | Signature                                    |
+|----------------|----------------------------------------------|
+| ``@precondition``  | ``(state, args) → bool``                  |
+| ``@postcondition`` | ``(old_state, args, result, new_state) → bool`` |
+| ``@invariant`` | ``(state) → bool``                           |
+| ``@exceptional`` | ``(state, args) → bool``                   |
 
-```python
-@dataclass(frozen=True)
-class TransferArgs(Args):
-    source_id: str
-    target_id: str
-    amount: int
-
-@dataclass(frozen=True)
-class TransferReceipt(Result):
-    transaction_id: str
-    source_id: str
-    target_id: str
-    amount: int
-    success: bool
-```
-
-`Args` and `Result` are frozen-dataclass base classes.  Subclasses must
-also be frozen — Python enforces this automatically, since a dataclass
-cannot mix frozen and non-frozen bases — which is exactly the immutability
-discipline purity requires: a precondition/postcondition must never be
-able to mutate the input or output it is asserting properties about.
-
-This is enforced **at registration time**, not merely by convention:
-
-- The `args` parameter of any precondition/postcondition tagged with
-  `entry_point` must be annotated with an `Args` subclass; the `result`
-  parameter of any such postcondition must be annotated with a `Result`
-  subclass.  An untyped or wrongly-typed parameter is rejected immediately.
-- Every contract sharing the same `entry_point` must agree on exactly
-  which `Args`/`Result` subclass it uses.  A second precondition
-  registered under an already-used `entry_point` with a *different* Args
-  type raises a `ValueError` immediately — this is caught at import time,
-  not later as a call-time `AttributeError` on a missing field.
-
-Contracts that omit `entry_point` (reusable `@predicate`s, `@function`s,
-one-off checks) are not subject to this constraint and remain free-form.
-
-When an operation's input genuinely has mutually exclusive shapes (e.g.
-"search by name" vs. "search by date range" vs. "search by geo box"),
-prefer either a discriminated union (`Union[NameSearch, DateRangeSearch,
-...]` tagged with a `Literal` discriminant) or, more often, separate
-entry points — one canonical Args/Result pair per behaviourally distinct
-operation.
-
-See `specsaver.verify.run_entry_point`, which executes every currently
-registered contract for an entry point around a call to the
-implementation, so that adding a new precondition/postcondition is
-automatically picked up by every test that calls it — nothing needs to be
-hand-listed.
+``Args`` and ``Result`` are frozen-dataclass base classes.  The ``state``
+parameter is a domain-specific ``SpecState`` with provenance
+decomposition (observed, derived, environment, history, ghost).  See the
+*Specification-Driven Testing Architecture* document for the full
+design.  The ``result`` parameter may be a ``Result`` subclass (success)
+or a Python ``Exception`` (error outcome) — postconditions self-guard
+accordingly.
 
 ---
 
@@ -435,74 +447,65 @@ effect of `A` is the union of its own declared effects and those of `B`.
 
 ---
 
-## 7. Ghost Variables
+## 7. Ghost Variables and SpecState Provenance
 
-Ghost variables are specification-only state that exists in the contract model
-but **not** in the implementation.  They serve the same role as ghost
-variables in Dafny: they allow the specification to track abstract state that
-the implementation does not physically store.
+The contract-facing state (``SpecState``) is an immutable snapshot with
+provenance decomposition.  Not everything that contracts reason about is
+"ghost state" — the source of each field matters.
 
-### 7.1 Declaration
+### 7.1 Provenance classes
+
+| Source                   | Classification  | Example                                |
+|--------------------------|-----------------|----------------------------------------|
+| Database table           | **observed**    | ``accounts``, ``limits`` (from a DB)   |
+| Computed from observed   | **derived**     | ``total_balance``                      |
+| External runtime         | **environment** | ``current_time``, ``principal``        |
+| Interpreted trace        | **history**     | ``logical_events``                     |
+| Proof- or spec-only       | **ghost**       | ``initial_total``, linearisation witnesses |
+
+### 7.2 Persistent state is NOT ghost state
+
+State stored in a database table (e.g. transfer limits) is **observed**
+state — it has a concrete representation and is recoverable from the
+database.  It should be a plain ``@dataclass``, not decorated with
+``@ghost``.  Genuine ghost state is proof-only: values that need not
+exist in concrete storage and must obey noninterference (changing them
+must not alter concrete execution).
+
+### 7.3 Declaration
 
 ```python
-@ghost
+# Persistent / observed — plain dataclass, stored in a DB table
+@dataclass
 class TransferLimits:
-    daily_remaining: int
-    monthly_remaining: int
-    per_transfer_max: int
+    per_transfer_max: int | None = None
+    daily_remaining: int | None = None
+    monthly_remaining: int | None = None
+
+# Genuine ghost — proof-only, not stored in any table
+@ghost
+@dataclass
+class ProofWitness:
+    initial_total: int
+    linearisation_key: str
 ```
 
-Ghost types are annotated just like any other type.  A ghost field may hold
-`Any` if its shape is not yet determined.
-
-### 7.2 Ghost State in Invariants
+### 7.4 SpecState structure
 
 ```python
-@invariant
-def limits_not_exceeded(state: AccountState, ghost: TransferLimits) -> bool:
-    return (
-        ghost.daily_remaining >= 0
-        and ghost.monthly_remaining >= 0
-    )
+@dataclass(frozen=True)
+class TransferSpecState:
+    observed: TransferObserved       # from the database
+    derived: TransferDerived         # computed from observed
+    ghost: TransferGhost             # proof-only
 ```
 
-### 7.3 Ghost Updates in Postconditions
-
-Ghost variables are treated as part of the state for the purpose of
-postconditions.  An operation may update ghost state even though no physical
-state changes:
-
-```python
-@postcondition
-def transfer_post_ghost_limits(
-    old_s: AccountState,
-    amount: int,
-    result: TransferReceipt,
-    new_s: AccountState,
-) -> bool:
-    return (
-        new_s.ghost.daily_remaining
-        == old_s.ghost.daily_remaining - amount
-    )
-```
-
-### 7.4 Ghost Code
-
-Ghost code is specification-only code that updates ghost variables.  It is
-written in the same pure language as contracts but is **not** compiled into
-the production implementation:
-
-```python
-@ghost_update
-def update_transfer_limit_ghost(ghost: TransferLimits, amount: int) -> TransferLimits:
-    return TransferLimits(
-        daily_remaining=ghost.daily_remaining - amount,
-        monthly_remaining=ghost.monthly_remaining - amount,
-        per_transfer_max=ghost.per_transfer_max,
-    )
-```
-
-Ghost code is verified as a contract entry point in its own right.
+Contracts access all components uniformly:
+``state.observed.accounts[id].balance`` and
+``state.observed.limits.per_transfer_max`` and
+``state.derived.total_balance``.  The ``@ghost`` decorator marks the
+``TransferGhost`` component as specification-only; everything else is
+observable.
 
 ---
 
@@ -578,7 +581,7 @@ domain as an approximation.
 
 ---
 
-## 9. Temporal Constructs
+## 9. Temporal and Logical Constructs
 
 ### 9.1 `old(...)`
 
@@ -596,6 +599,57 @@ verifier desugars `old(E)` into the corresponding projection from the
 old-state argument.
 
 ### 9.2 `unchanged(...)`
+
+```python
+@postcondition
+def accounts_unchanged_except_source(
+    old_s: AccountState, amount: int, result: TransferReceipt, new_s: AccountState
+) -> bool:
+    return unchanged(old_s, new_s, except_={Field("source.balance")})
+```
+
+`unchanged(old_s, new_s)` asserts that every field reachable from the state
+root is equal in `old_s` and `new_s`.  The optional `except_` set carves out
+fields that are permitted to change.
+
+### 9.3 `implies(p, q)`
+
+Logical implication as a contract expression — makes conditional
+structure explicit in a single expression rather than a multi-line
+``if``/``return`` guard:
+
+```python
+@postcondition(...)
+def transfer_post_source_decreased(old_s, args, result, new_s) -> bool:
+    return implies(
+        isinstance(result, TransferReceipt),
+        new_s.observed.accounts[args.source_id].balance
+        == old(old_s.observed.accounts[args.source_id].balance) - args.amount,
+    )
+```
+
+This reads: "If the result is a receipt → the source balance decreased
+by the amount."  The definition is ``¬p ∨ q`` — a guard that fails open.
+When ``p`` is false (e.g. an exception was raised), ``implies`` returns
+``True`` trivially; when ``p`` is true, ``q`` must hold.
+
+```python
+def implies(p: bool, q: bool) -> bool:
+    return not p or q
+```
+
+The error-preservation variant is:
+
+```python
+return implies(
+    isinstance(result, (TransferError, Exception)),
+    old(source_balance) == new(source_balance) and ...,
+)
+```
+
+"If it's an error → state is unchanged."
+
+
 
 ```python
 @postcondition
@@ -635,24 +689,32 @@ terminates under a shared well-founded ordering.
 
 Every contract proposition carries exactly one decorator that classifies it:
 
-| Decorator         | Meaning                                      |
-|-------------------|----------------------------------------------|
-| `@precondition`   | Predicate on `(state, args)`                 |
-| `@postcondition`  | Predicate on `(old_state, args, result, new_state)` |
-| `@invariant`      | Predicate on `(state)`                       |
-| `@predicate`      | Pure, reusable boolean function              |
-| `@function`       | Pure, reusable non-boolean function          |
-| `@writes`         | Frame: fields the operation may modify       |
-| `@reads`          | Frame: fields the operation may read         |
-| `@effect`         | Side-effect signature (connections, events)  |
-| `@ghost`          | Ghost type or ghost variable declaration     |
-| `@ghost_update`   | Ghost-only state transformer                 |
-| `@measure`        | Explicit termination measure (escape hatch; see §3.4) |
+| Decorator         | Meaning                                        |
+|-------------------|------------------------------------------------|
+| `@precondition`  | Predicate on `(state, args)` — admissibility  |
+| `@postcondition` | Predicate on `(old_state, args, result, new_state)` — transition |
+| `@invariant`     | Predicate on `(state)` — holds at every quiescent point |
+| `@exceptional`   | Predicate on `(state, args)` — condition that triggers an exception type |
+| `@predicate`     | Pure, reusable boolean function               |
+| `@function`      | Pure, reusable non-boolean function           |
+| `@writes`        | Frame: fields the operation may modify        |
+| `@reads`         | Frame: fields the operation may read          |
+| `@effect`        | Side-effect signature (connections, events)   |
+| `@ghost`         | Ghost type or proof-only state declaration    |
+| `@ghost_update`  | Ghost-only state transformer                  |
+| `@measure`       | Explici
+t termination measure (see §3.4)          |
 
-Every decorator except `@ghost`/`@measure` accepts three optional keyword
-arguments: `entry_point` (§4.4 — groups contracts by operation and enforces
-canonical Args/Result types), `from_gherkin` (the Gherkin step it flows
-from), and `feature` (the feature file it belongs to).
+Every decorator accepts two optional keyword arguments:
+``from_gherkin`` (the Gherkin step or Rule text the contract flows from)
+and ``feature`` (the ``.feature`` filename).  These are the primary
+identification mechanism — contracts are grouped by feature, not by an
+arbitrary operation name.  ``@exceptional`` additionally accepts
+``exc_type`` (the Python exception class).
+
+The ``entry_point`` parameter is deprecated — it remains accepted for
+backward compatibility but is not used by the current feature-based
+architecture.
 
 ---
 
@@ -662,23 +724,38 @@ Every contract proposition is registered with a stable, fully-qualified
 identifier:
 
 ```
-<component>.<category>.<name>
+<module>.<kind>.<qualname>
 ```
 
 Examples:
 ```
-transfer.pre.valid_amount
-transfer.post.total_preserved
-transfer.post.source_decreased
-transfer.frame.account_only
-transfer.effect.audit_event
-transfer.ghost.limits
+examples.bank_transfer.contracts.precondition.transfer_pre_source_exists
+examples.bank_transfer.contracts.postcondition.transfer_post_total_preserved
+examples.bank_transfer.contracts.invariant.account_balance_non_negative
+examples.bank_transfer.contracts.exceptional.transfer_exc_insufficient_funds
+examples.bank_transfer.contracts.writes.transfer_writes_frame
+examples.bank_transfer.contracts.effect.transfer_effect
 ```
+
+Contracts are grouped by **feature** (the ``.feature`` filename) rather
+than by an arbitrary operation name:
+
+```python
+registry.list_by_feature_and_kind("transfer.feature", ContractKind.PRECONDITION)
+registry.list_by_feature_and_kind("transfer.feature", ContractKind.EXCEPTIONAL)
+```
+
+The ``SpecScenario`` assembler cross-references Gherkin step text against
+the registry via ``list_by_gherkin(step_text)`` to produce the full
+assembled contract for one scenario.  The ``entry_point``-based lookup
+methods (``preconditions_for``, ``postconditions_for``,
+``invariants_for``) remain available for backward compatibility but are
+not used by the current architecture.
 
 The registry records for each identifier:
 
 - the **implementation** (the Python function body);
-- the **contract kind** (pre, post, invariant, etc.);
+- the **contract kind** (pre, post, invariant, exceptional, etc.);
 - **dependencies** (which other contracts this one calls);
 - **proof status** (unverified, verified, counterexample found);
 - **testing status** (untested, tested, flaky);

@@ -45,6 +45,7 @@ from specsaver import (
     effect,
     exceptional,
     forall,
+    implies,
     invariant,
     old,
     postcondition,
@@ -304,11 +305,10 @@ def transfer_post_source_decreased(
     result: TransferReceipt | TransferError | Exception,
     new_s: TransferSpecState,
 ) -> bool:
-    if not isinstance(result, TransferReceipt):
-        return True
-    return (
+    return implies(
+        isinstance(result, TransferReceipt),
         new_s.observed.accounts[args.source_id].balance
-        == old(old_s.observed.accounts[args.source_id].balance) - args.amount
+        == old(old_s.observed.accounts[args.source_id].balance) - args.amount,
     )
 
 
@@ -322,11 +322,10 @@ def transfer_post_target_increased(
     result: TransferReceipt | TransferError | Exception,
     new_s: TransferSpecState,
 ) -> bool:
-    if not isinstance(result, TransferReceipt):
-        return True
-    return (
+    return implies(
+        isinstance(result, TransferReceipt),
         new_s.observed.accounts[args.target_id].balance
-        == old(old_s.observed.accounts[args.target_id].balance) + args.amount
+        == old(old_s.observed.accounts[args.target_id].balance) + args.amount,
     )
 
 
@@ -353,13 +352,12 @@ def transfer_post_error_preserves_state(
     result: TransferReceipt | TransferError | Exception,
     new_s: TransferSpecState,
 ) -> bool:
-    if isinstance(result, TransferReceipt):
-        return True
-    return (
+    return implies(
+        isinstance(result, (TransferError, Exception)),
         old(old_s.observed.accounts[args.source_id].balance)
         == new_s.observed.accounts[args.source_id].balance
         and old(old_s.observed.accounts[args.target_id].balance)
-        == new_s.observed.accounts[args.target_id].balance
+        == new_s.observed.accounts[args.target_id].balance,
     )
 
 
