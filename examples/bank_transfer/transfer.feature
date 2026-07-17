@@ -30,8 +30,8 @@ Feature: Funds transfer
 
     Examples:
       | source | target | source_balance | target_balance | amount | source_currency | target_currency | outcome                   |
-      | A1     | A2     | 100            | 50             | 200    | USD             | USD             | error:INSUFFICIENT_FUNDS |
-      | B1     | B2     | 0              | 1000           | 1      | USD             | USD             | error:INSUFFICIENT_FUNDS |
+      | A1     | A2     | 100            | 50             | 200    | USD             | USD             | error:InsufficientFundsError |
+      | B1     | B2     | 0              | 1000           | 1      | USD             | USD             | error:InsufficientFundsError |
 
   Scenario Outline: Invalid amount
     Given a source account "<source>" with balance <source_balance> in currency "<source_currency>"
@@ -65,8 +65,8 @@ Feature: Funds transfer
 
     Examples:
       | source | target | source_balance | target_balance | amount | source_currency | target_currency | outcome                  |
-      | A1     | A2     | 100            | 50             | 30     | USD             | EUR             | error:CURRENCY_MISMATCH |
-      | B1     | B2     | 1000           | 0              | 100    | GBP             | USD             | error:CURRENCY_MISMATCH |
+      | A1     | A2     | 100            | 50             | 30     | USD             | EUR             | error:CurrencyMismatchError |
+      | B1     | B2     | 1000           | 0              | 100    | GBP             | USD             | error:CurrencyMismatchError |
 
   Scenario Outline: Runtime fault
     Given a source account "<source>" with balance <source_balance> in currency "<source_currency>"
@@ -78,4 +78,4 @@ Feature: Funds transfer
 
     Examples:
       | source | target | source_balance | target_balance | amount | source_currency | target_currency | outcome               | fault            |
-      | C1     | C2     | 200            | 100            | 50     | USD             | USD             | error:FAULT_INJECTED | simulated_fault  |
+      | C1     | C2     | 200            | 100            | 50     | USD             | USD             | error:SimulatedFaultError | simulated_fault  |

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import sqlite3 as _sqlite3
 
-from examples.bank_transfer.events import FundsReceived, TransferCompleted
 from examples.bank_transfer.types import (
     AccountNotFoundError,
     CurrencyMismatchError,
@@ -27,6 +26,7 @@ from specsaver.logic import implies
     when='funds of <amount> are transferred from "<source>" to "<target>"',
     requires=[
         lambda state, args: args.amount > 0,
+        lambda state, args: args.source_id != args.target_id,
         lambda state, args: args.source_id in state.observed.accounts,
         lambda state, args: args.target_id in state.observed.accounts,
     ],
@@ -60,6 +60,10 @@ from specsaver.logic import implies
             raises=InsufficientFundsError,
             when=[
                 lambda state, args: (
+                    state.observed.accounts[args.source_id].currency
+                    == state.observed.accounts[args.target_id].currency
+                ),
+                lambda state, args: (
                     state.observed.accounts[args.source_id].balance
                     < args.amount
                 ),
@@ -90,10 +94,18 @@ from specsaver.logic import implies
     ghost_invariants=[
         lambda state: state.ghost.initial_total is not None,
     ],
-    writes={"source.balance", "target.balance", "audit_log"},
-    reads={"source.balance", "target.balance", "source.currency", "target.currency"},
-    uses={"database"},
-    emits={"audit": {TransferCompleted}, "notification": {FundsReceived}},
+    writes={
+        "state.accounts[source_id].balance",
+        "state.accounts[target_id].balance",
+        "state.audit_log",
+        "state.notif_log",
+    },
+    reads={
+        "state.accounts[source_id].balance",
+        "state.accounts[target_id].balance",
+        "state.accounts[source_id].currency",
+        "state.accounts[target_id].currency",
+    },
 )
 class TransferService:
     """Implementation — the contract is the decorator."""

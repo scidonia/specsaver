@@ -47,6 +47,15 @@ Derivation = Callable[..., Any]
 
 
 @dataclass
+class StateField:
+    """Metadata about a field in the abstract state space."""
+
+    type_hint: str = ""
+    provenance: str = ""  # "observed", "derived", "ghost"
+    description: str = ""
+
+
+@dataclass
 class ExcExit:
     """A named exceptional exit from the implementation.
 
@@ -149,10 +158,9 @@ class Contract:
     ghost_transitions: list[Predicate] = field(default_factory=list)
     ghost_invariants: list[Predicate] = field(default_factory=list)
     derives: dict[str, Derivation] = field(default_factory=dict)
+    state_schema: dict[str, StateField] = field(default_factory=dict)
     writes: set[str] = field(default_factory=set)
     reads: set[str] = field(default_factory=set)
-    uses: set[str] = field(default_factory=set)
-    emits: dict[str, set[type]] = field(default_factory=dict)
 
     def __post_init__(self):
         for attr in (
@@ -210,8 +218,6 @@ def contract(
     ghost_invariants: list[Predicate] | None = None,
     writes: set[str] | None = None,
     reads: set[str] | None = None,
-    uses: set[str] | None = None,
-    emits: dict[str, set[type]] | None = None,
 ):
     """Attach a Contract to a class.  The impl method is auto-discovered."""
     def decorator(cls):
@@ -236,8 +242,6 @@ def contract(
             ghost_invariants=ghost_invariants or [],
             writes=writes or set(),
             reads=reads or set(),
-            uses=uses or set(),
-            emits=emits or set(),
         )
         return cls
 

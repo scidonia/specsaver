@@ -23,5 +23,5 @@ Feature: Safe integer division
 
     Examples:
       | dividend | divisor | outcome             |
-      | 10       | 0       | error:DIVISION_ERROR |
-      | 0        | 0       | error:DIVISION_ERROR |
+      | 10       | 0       | error:DivisionError |
+      | 0        | 0       | error:DivisionError |

@@ -1,7 +1,13 @@
-"""Event channels — structured output side effects."""
+"""Event channels — structured output side effects.
+
+Channels are backed by Python's standard :mod:`logging` facility so that
+emissions can be captured, mocked, or redirected with standard tools
+(``caplog``, ``unittest.mock``, ``logging.config``).
+"""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 
@@ -23,18 +29,30 @@ class FundsReceived:
 class EventLog:
     """A channel-aware log of typed events.
 
-    Each channel is a named sink (e.g. "audit", "notification", "stdout").
-    Events are appended in order.  The contract specifies which *types* of
-    event should appear on which channels.
+    Each channel is a named logger child under ``base_logger``.
+    ``emit(channel, event)`` logs at INFO level with the event's
+    dataclass-fields attached as structured ``extra`` data, so
+    handlers/formatters can access them.
+
+        caplog = pytest.logging.LogCaptureFixture(...)
+        with caplog.at_level(logging.INFO, logger="specsaver.audit"):
+            log.emit("audit", TransferCompleted("tx-1", "A", "B", 100))
+        assert "TransferCompleted" in caplog.text
     """
 
-    channels: dict[str, list[object]] = field(default_factory=dict)
+    base_logger: str = "specsaver"
+    _records: list[tuple[str, object]] = field(default_factory=list, init=False)
 
     def emit(self, channel: str, event: object) -> None:
-        self.channels.setdefault(channel, []).append(event)
+        logger = logging.getLogger(self.base_logger).getChild(channel)
+        fields = getattr(event, "__dataclass_fields__", {})
+        extra = {name: getattr(event, name) for name in fields}
+        logger.info(event.__class__.__name__, extra=extra)
+        self._records.append((channel, event))
 
-    def emitted(self, channel: str, event_type: type) -> bool:
-        return any(isinstance(e, event_type) for e in self.channels.get(channel, []))
-
-    def snapshot(self) -> dict[str, list[object]]:
-        return {ch: list(evs) for ch, evs in self.channels.items()}
+    def emitted(self, channel: str, event_type: type) -> object | None:
+        """Return the first emitted instance of *event_type* on *channel*, or None."""
+        for ch, ev in self._records:
+            if ch == channel and isinstance(ev, event_type):
+                return ev
+        return None

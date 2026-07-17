@@ -21,6 +21,7 @@ from specsaver.types import ContractKind
 
 _CONJUNCTION_PYTHON = " and "
 _CONJUNCTION_MATH = " ∧ "
+_CONJ_RICH = " [#FFBF00]∧[/] "
 _INDENT = "      "
 
 
@@ -162,7 +163,19 @@ def render_contract_from_object(contract, title: str = "") -> str:
     if not isinstance(contract, Contract):
         return ""
     lines: list[str] = [""]
-    _conj = " [#FFBF00]∧[/] "
+    _conj = _CONJ_RICH
+
+    if contract.state_schema:
+        from rich.markup import escape
+        lines.append("[bold green]state:[/]")
+        for name, field in contract.state_schema.items():
+            prov = field.provenance
+            color = {"observed": "green", "derived": "yellow", "ghost": "dim"}
+            lines.append(
+                f"{_T1}{name}: {escape(field.type_hint)} "
+                f"[{color.get(prov, 'dim')}]← {prov}[/]"
+            )
+
     pre = _render_predicate_list(contract.requires, "math")
     if pre:
         q = _render_quantifier_header(contract.requires, "math",
@@ -184,11 +197,11 @@ def render_contract_from_object(contract, title: str = "") -> str:
         if contract.writes:
             lines.append(f"{_T1}[bold green]writes:[/]")
             for f in sorted(contract.writes):
-                lines.append(f"{_T2}{f}")
+                lines.append(f"{_T2}{f.replace("[", r"\[")}")
         if contract.reads:
             lines.append(f"{_T1}[bold green]reads:[/]")
             for f in sorted(contract.reads):
-                lines.append(f"{_T2}{f}")
+                lines.append(f"{_T2}{f.replace("[", r"\[")}")
 
     inv = _render_predicate_list(contract.invariants, "math")
     if inv:
@@ -202,24 +215,8 @@ def render_contract_from_object(contract, title: str = "") -> str:
         for name, fn in contract.derives.items():
             expr_src, param_names = _extract_return_expression_with_params(fn)
             if expr_src:
-                rendered = _render_expr(ast.parse(expr_src, mode="eval").body, "math")
-                rendered = _normalize_var_names(rendered, param_names)
+                rendered = _render_normalized(expr_src, param_names, "math")
                 lines.append(f"{_T1}{name} ≜ {rendered}")
-
-    if contract.uses or contract.emits:
-        lines.append("[bold green]effects:[/]")
-        if contract.uses:
-            for u in sorted(contract.uses):
-                lines.append(f"{_T1}[bold]uses:[/] {u}")
-        if contract.emits:
-            for channel in sorted(contract.emits):
-                for et in sorted(contract.emits[channel], key=lambda t: t.__name__):
-                    lines.append(
-                        f"{_T1}[bold]emits:[/] {channel} "
-                        f"[bright_blue]←[/] "
-                        f"[bold steel_blue3]Π msg: "
-                        f"[bright_blue]{et.__name__}[/][/]"
-                    )
 
     exc_parts = _render_exception_dict(contract.exceptions, "math",
                                         args_type=contract.args_type)
@@ -286,8 +283,7 @@ def _render_predicate_list(predicates: list, mode: str) -> list[str]:
         if expr_src is None:
             rendered.append(getattr(p, "__qualname__", str(p)))
         else:
-            r = _render_expr(ast.parse(expr_src, mode="eval").body, mode)
-            rendered.append(_normalize_var_names(r, param_names))
+            rendered.append(_render_normalized(expr_src, param_names, mode))
     return rendered
 
 
@@ -338,6 +334,8 @@ def _canonical_param_names(param_names: tuple[str, ...]) -> list[str]:
     if n >= 4:
         first = param_names[0]
         if first in ("old_s", "old_state", "prev"):
+            if n >= 5:
+                return ["old(state)", "result", "state", param_names[4]]
             return ["old(state)", "result", "state"]
         else:
             return ["old(state)", "args", param_names[2], "state"]
@@ -367,9 +365,11 @@ def _render_exception_dict(exceptions: list, mode: str,
             for fn in exit_.when:
                 expr_src, pn = _extract_return_expression_with_params(fn)
                 if expr_src:
-                    r = _render_expr(ast.parse(expr_src, mode="eval").body, mode)
-                    r = _normalize_var_names(r, pn)
-                    r = r.replace("state.", "old(state).")
+                    r = _render_normalized(expr_src, pn, mode)
+                    # when is about the pre-state — if the lambda uses bare
+                    # 'state' (2-param), rewrite to old(state) for display
+                    if len(pn) == 2:
+                        r = r.replace("state.", "old(state).")
                     lines.append(f"{_T2}{r}")
         lines.append(
             f"{_T1}[bold green]raises:[/] exc: "
@@ -380,12 +380,12 @@ def _render_exception_dict(exceptions: list, mode: str,
             f"[#FFBF00]∃[/] exc, state."
         )
         if exit_.ensures:
+            pred_parts: list[str] = []
             for fn in exit_.ensures:
                 expr_src, pn = _extract_return_expression_with_params(fn)
                 if expr_src:
-                    r = _render_expr(ast.parse(expr_src, mode="eval").body, mode)
-                    r = _normalize_var_names(r, pn)
-                    lines.append(f"{_T2}{r}")
+                    pred_parts.append(_render_normalized(expr_src, pn, mode))
+            lines.extend(_indent_lines(pred_parts, 2, _CONJ_RICH))
         else:
             lines.append(f"{_T2}[#FFBF00]⊤[/]")
         parts.append("\n".join(lines))
@@ -393,49 +393,70 @@ def _render_exception_dict(exceptions: list, mode: str,
 
 
 def _normalize_var_names(text: str, param_names: tuple[str, ...]) -> str:
-    """Replace lambda parameter names with canonical contract notation.
+    """Replace lambda parameter names with canonical contract notation."""
+    if not param_names:
+        return text
+    try:
+        tree = ast.parse(text, mode="eval")
+    except SyntaxError:
+        return text
+    normalized = _rewrite_names(tree.body, param_names)
+    ast.fix_missing_locations(normalized)
+    return ast.unparse(normalized)
 
-    param_names are the lambda's own parameter names, in order.
-    Convention by arity:
-      1 param:  [state]
-      2 params: [state, args]
-      4 params: [old_state, args, result, new_state]
-    """
+
+def _rewrite_names(node, param_names: tuple[str, ...]) -> ast.AST:
+    """Copy *node*, rewriting parameter names using a clean recursive pass."""
     n = len(param_names)
-    if n == 1:
-        state = param_names[0]
-        text = text.replace(f"{state}.observed.", "state.")
-        text = text.replace(f"{state}.derived.", "state.")
-    elif n == 2:
-        state, args_p = param_names
-        text = text.replace(f"{args_p}.", "")
-        text = text.replace(f"{state}.observed.", "state.")
-        text = text.replace(f"{state}.derived.", "state.")
-    elif n >= 4:
-        first = param_names[0]
-        if first in ("old_s", "old_state", "prev"):
-            old_st, args_p, _result, new_st = param_names[:4]
-            text = text.replace(f"{old_st}.observed.", "old(state).")
-            text = text.replace(f"{old_st}.derived.", "old(state).")
-            text = text.replace(f"{old_st}.", "old(state).")
-            text = text.replace(f"{args_p}.", "")
-            text = text.replace(f"{new_st}.observed.", "state.")
-            text = text.replace(f"{new_st}.derived.", "state.")
-            text = text.replace(f"{new_st}.", "state.")
-            text = text.replace("old(state).observed.", "old(state).")
-            text = text.replace("old(state).derived.", "old(state).")
-        else:
-            # Exception or other: state, args, exc, after_state
-            state, args_p, _exc, after_st = param_names[:4]
-            text = text.replace(f"{args_p}.", "")
-            text = text.replace(f"{state}.observed.", "state.")
-            text = text.replace(f"{state}.derived.", "state.")
-            text = text.replace(f"{after_st}.observed.", "state.")
-            text = text.replace(f"{after_st}.derived.", "state.")
-            text = text.replace(f"{after_st}.", "state.")
-    text = text.replace("state.observed.", "state.")
-    text = text.replace("state.derived.", "state.")
-    return text
+    # Only 4-param signatures (postcondition/exception) treat param 0 as old state
+    is_multistate = n >= 4
+    pre_state = param_names[0] if is_multistate else None
+    args_name = param_names[1] if n >= 2 else None
+    post_state = param_names[3] if n >= 4 else None
+
+    def _walk(n):
+        if isinstance(n, ast.Attribute):
+            if n.attr in ("observed", "derived"):
+                return _walk(n.value)
+            if isinstance(n.value, ast.Name) and n.value.id == args_name:
+                return ast.Name(id=n.attr, ctx=n.value.ctx)
+            val = _walk(n.value)
+            if isinstance(val, ast.Name) and val.id == pre_state:
+                val = _make_old_call()
+            elif isinstance(val, ast.Name) and val.id == post_state:
+                val = ast.Name(id="state", ctx=val.ctx)
+            return ast.Attribute(value=val, attr=n.attr, ctx=n.ctx)
+        if isinstance(n, ast.Name):
+            return ast.Name(id=n.id, ctx=n.ctx)
+        # Copy other nodes recursively
+        kwargs = {}
+        for field_name, old_value in ast.iter_fields(n):
+            if isinstance(old_value, list):
+                kwargs[field_name] = [_rewrite_names(v, param_names) for v in old_value]
+            elif isinstance(old_value, ast.AST):
+                kwargs[field_name] = _walk(old_value)
+            else:
+                kwargs[field_name] = old_value
+        return n.__class__(**kwargs)
+    return _walk(node)
+
+
+def _render_normalized(expr_src: str, param_names: tuple[str, ...],
+                       mode: str) -> str:
+    """Parse, normalize variable names, and render."""
+    tree = ast.parse(expr_src, mode="eval")
+    assert isinstance(tree.body, ast.expr)
+    normalized = _rewrite_names(tree.body, param_names)
+    ast.fix_missing_locations(normalized)
+    return _render_expr(normalized, mode)
+
+
+def _make_old_call() -> ast.Call:
+    return ast.Call(
+        func=ast.Name(id="old", ctx=ast.Load()),
+        args=[ast.Name(id="state", ctx=ast.Load())],
+        keywords=[],
+    )
 
 
 def _extract_return_expression_with_params(
@@ -563,7 +584,7 @@ class _BaseRenderer(ast.NodeVisitor):
         gen = node.args[0]
         assert isinstance(gen, ast.GeneratorExp)
         comp = gen.generators[0]
-        return comp.target, comp.iter, gen.elt
+        return comp.target, comp.iter, comp.ifs, gen.elt
 
     @staticmethod
     def _lambda_arg(node: ast.Call) -> ast.arg:
@@ -674,14 +695,15 @@ class _MathRenderer(_BaseRenderer):
                 f"[bright_blue]{_type_name(node.args[1])}[/]"
             )
         if self._is_all_call(node):
-            target, iter_, body = self._generator_arg(node)
+            target, iter_, ifs, body = self._generator_arg(node)
             param = self.visit(target)
             domain = self.visit(iter_)
             body_s = self.visit(body)
-            return (
-                f"[#FFBF00]∀[/] {param} "
-                f"[#FFBF00]∈[/] [bright_blue]{domain}[/]. {body_s}"
-            )
+            head = f"[#FFBF00]∀[/] {param} [bright_blue]∈[/] [bright_blue]{domain}[/]"
+            if ifs:
+                conds = " ∧ ".join(self.visit(c) for c in ifs)
+                head += f" , {conds}"
+            return f"{head}. {body_s}"
         if self._is_quantifier_call(node, "forall"):
             domain = self.visit(node.args[0])
             body = self.visit(self._lambda_body(node))

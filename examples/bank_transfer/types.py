@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from examples.bank_transfer.events import FundsReceived, TransferCompleted
 from specsaver import Args, Result
 
 
@@ -66,6 +67,8 @@ class SimulatedFaultError(TransferError):
 class TransferObserved:
     accounts: Mapping[str, Account]
     limits: TransferLimits | None = None
+    audit_log: tuple[TransferCompleted, ...] = ()
+    notif_log: tuple[FundsReceived, ...] = ()
 
 
 @dataclass(frozen=True)

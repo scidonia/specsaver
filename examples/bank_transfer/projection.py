@@ -159,15 +159,27 @@ class TransferProjection:
                 daily_remaining=d.get("daily_remaining"),
             )
 
-        observed = TransferObserved(accounts=accounts, limits=limits)
+        observed = TransferObserved(
+            accounts=accounts, limits=limits,
+            audit_log=tuple(
+                e for _, e in context.events._records
+                if isinstance(e, TransferCompleted)
+            ),
+            notif_log=tuple(
+                e for _, e in context.events._records
+                if isinstance(e, FundsReceived)
+            ),
+        )
         derived = TransferDerived(
             total_balance=sum(a.balance for a in accounts.values())
         )
 
+        ghost = TransferGhost(initial_total=context.ghost.initial_total)
+
         return TransferSpecState(
             observed=observed,
             derived=derived,
-            ghost=context.ghost,
+            ghost=ghost,
         )
 
 
@@ -305,10 +317,10 @@ class TransferScenarioRunner:
         try:
             return self._impl.execute(context, args), None
         except Exception as exc:
-            code = getattr(type(exc), "code", type(exc).__name__)
+            exc_name = type(exc).__name__
             matching = [
                 e for e in self._contract.exceptions
-                if getattr(e.raises, "code", e.raises.__name__) == code
+                if isinstance(exc, e.raises)
             ]
             if matching:
                 after = self._projection.snapshot(context)
@@ -323,11 +335,11 @@ class TransferScenarioRunner:
                     break
                 else:
                     raise RuntimeError(
-                        f"exception {code} has no matching when"
+                        f"exception {exc_name} has no matching when"
                     ) from exc
-            if expected and code != expected:
+            if expected and exc_name != expected:
                 raise
-            return exc, code
+            return exc, exc_name
 
     def run(self, row: dict[str, str]) -> tuple[bool, str]:
         witness = build_witness(row)
@@ -357,10 +369,6 @@ class TransferScenarioRunner:
                 for inv in self._contract.invariants:
                     if not inv(after):
                         return False, "invariant failed after"
-                for channel, events in self._contract.emits.items():
-                    for event in events:
-                        if not context.events.emitted(channel, event):
-                            return False, f"missing emission: {channel}/{event}"
                 return True, "PASS"
             result, code = self._run_impl(context, args, outcome, fault_name, before)
             if outcome.startswith("error:") and code != outcome.split(":", 1)[1]:

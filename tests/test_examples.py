@@ -196,11 +196,11 @@ def test_every_examples_row_has_an_outcome():
     tables = parse_examples_tables_file(FEATURE_PATH)
     expected_outcome_by_outline = {
         "Happy path transfer": "success",
-        "Insufficient funds": "error:INSUFFICIENT_FUNDS",
+        "Insufficient funds": "error:InsufficientFundsError",
         "Invalid amount": "rejected",
         "Non-existent account": "rejected",
-        "Currency mismatch": "error:CURRENCY_MISMATCH",
-        "Runtime fault": "error:FAULT_INJECTED",
+        "Currency mismatch": "error:CurrencyMismatchError",
+        "Runtime fault": "error:SimulatedFaultError",
     }
     seen = set()
     for table in tables:
