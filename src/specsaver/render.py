@@ -30,7 +30,6 @@ _INDENT = "      "
 
 
 def render_precondition(feature: str, mode: str = "python") -> str:
-    """All preconditions for a feature, conjoined."""
     records = get_registry().list_by_feature_and_kind(
         feature, ContractKind.PRECONDITION
     )
@@ -40,7 +39,6 @@ def render_precondition(feature: str, mode: str = "python") -> str:
 
 
 def render_postcondition(feature: str, mode: str = "python") -> str:
-    """All postconditions for a feature, conjoined."""
     records = get_registry().list_by_feature_and_kind(
         feature, ContractKind.POSTCONDITION
     )
@@ -50,7 +48,6 @@ def render_postcondition(feature: str, mode: str = "python") -> str:
 
 
 def render_invariant(feature: str, mode: str = "python") -> str:
-    """All invariants for a feature, conjoined."""
     records = get_registry().list_by_feature_and_kind(
         feature, ContractKind.INVARIANT
     )
@@ -60,7 +57,6 @@ def render_invariant(feature: str, mode: str = "python") -> str:
 
 
 def render_exceptional(feature: str, mode: str = "python") -> str:
-    """All exception contracts for a feature, conjoined by exception type."""
     records = get_registry().list_by_feature_and_kind(
         feature, ContractKind.EXCEPTIONAL
     )
@@ -78,17 +74,8 @@ def render_exceptional(feature: str, mode: str = "python") -> str:
     join = _CONJUNCTION_MATH if mode == "math" else _CONJUNCTION_PYTHON
     return join.join(parts)
 
-    """All invariants for a feature, conjoined."""
-    records = get_registry().list_by_feature_and_kind(
-        feature, ContractKind.INVARIANT
-    )
-    if not records:
-        return "True"
-    return _render_conjunction(records, mode)
-
 
 def render_contract(feature: str) -> str:
-    """Full display: pre, post, invariant, and exception blocks."""
     pre = render_precondition(feature, mode="math")
     post = render_postcondition(feature, mode="math")
     inv = render_invariant(feature, mode="math")
@@ -99,19 +86,10 @@ def render_contract(feature: str) -> str:
 
 
 def render_entry_point(feature: str) -> str:
-    """Structured, indented Dafny/JML-style contract for one feature.
-
-    Each keyword (requires, modifies, ensures, invariant, effects) is
-    bold; its value starts on the next line indented one step.  Frame
-    fields and event names are listed one per line for readability.
-    Conjunctions are broken at `∧` boundaries into aligned lines.
-    """
     registry = get_registry()
-
     pre = render_precondition(feature, mode="math")
     post = render_postcondition(feature, mode="math")
     inv = render_invariant(feature, mode="math")
-
     writes_records = registry.list_by_feature_and_kind(feature, ContractKind.WRITES)
     reads_records = registry.list_by_feature_and_kind(feature, ContractKind.READS)
     effect_records = registry.list_by_feature_and_kind(feature, ContractKind.EFFECT)
@@ -142,12 +120,8 @@ def render_entry_point(feature: str) -> str:
             pass
 
     lines: list[str] = []
-
-    # requires
     lines.append("[bold green]requires:[/]")
-    lines.extend(_indent_lines(_break_conjunction(pre), 1))
-
-    # modifies
+    lines.extend(_indent_lines(_break_conjunction(pre), 1, " ∧ "))
     if writes_set or reads_set:
         lines.append("[bold green]modifies:[/]")
         if writes_set:
@@ -158,17 +132,11 @@ def render_entry_point(feature: str) -> str:
             lines.append(f"{_T1}[bold]reads:[/]")
             for f in sorted(reads_set):
                 lines.append(f"{_T2}{f}")
-
-    # ensures
     lines.append("[bold green]ensures:[/]")
-    lines.extend(_indent_lines(_break_conjunction(post), 1))
-
-    # invariant
+    lines.extend(_indent_lines(_break_conjunction(post), 1, " ∧ "))
     if inv != "True":
         lines.append("[bold green]invariant:[/]")
-        lines.extend(_indent_lines(_break_conjunction(inv), 1))
-
-    # effects
+        lines.extend(_indent_lines(_break_conjunction(inv), 1, " ∧ "))
     if eff_uses or eff_opens or eff_emits:
         lines.append("[bold green]effects:[/]")
         if eff_uses:
@@ -181,19 +149,91 @@ def render_entry_point(feature: str) -> str:
             lines.append(f"{_T1}[bold]emits:[/]")
             for e in sorted(eff_emits):
                 lines.append(f"{_T2}{e}")
-
-    # exceptions
     exc = render_exceptional(feature, mode="math")
     if exc:
         lines.append("[bold green]exceptions:[/]")
-        lines.extend(_indent_lines(_break_conjunction(exc), 1))
+        lines.extend(_indent_lines(_break_conjunction(exc), 1, " ∧ "))
+    return "\n".join(lines)
 
+
+def render_contract_from_object(contract, title: str = "") -> str:
+    """Render a single Contract object directly."""
+    from specsaver.contract_model import Contract
+    if not isinstance(contract, Contract):
+        return ""
+    lines: list[str] = [""]
+    _conj = " [#FFBF00]∧[/] "
+    pre = _render_predicate_list(contract.requires, "math")
+    if pre:
+        q = _render_quantifier_header(contract.requires, "math",
+                                      args_type=contract.args_type)
+        label = f"[bold green]requires:[/] {q}" if q else "[bold green]requires:[/]"
+        lines.append(label)
+        lines.extend(_indent_lines(pre, 1, _conj))
+    post = _render_predicate_list(contract.ensures, "math")
+    if post:
+        q = _render_quantifier_header(contract.ensures, "math",
+                                      kind="ensures",
+                                      args_type=contract.args_type)
+        label = f"[bold green]ensures:[/] {q}" if q else "[bold green]ensures:[/]"
+        lines.append(label)
+        lines.extend(_indent_lines(post, 1, _conj))
+
+    if contract.writes or contract.reads:
+        lines.append("[bold green]modifies:[/]")
+        if contract.writes:
+            lines.append(f"{_T1}[bold green]writes:[/]")
+            for f in sorted(contract.writes):
+                lines.append(f"{_T2}{f}")
+        if contract.reads:
+            lines.append(f"{_T1}[bold green]reads:[/]")
+            for f in sorted(contract.reads):
+                lines.append(f"{_T2}{f}")
+
+    inv = _render_predicate_list(contract.invariants, "math")
+    if inv:
+        q = _render_quantifier_header(contract.invariants, "math")
+        label = f"[bold green]invariant:[/] {q}" if q else "[bold green]invariant:[/]"
+        lines.append(label)
+        lines.extend(_indent_lines(inv, 1, _conj))
+
+    if contract.derives:
+        lines.append("[bold green]derived:[/]")
+        for name, fn in contract.derives.items():
+            expr_src, param_names = _extract_return_expression_with_params(fn)
+            if expr_src:
+                rendered = _render_expr(ast.parse(expr_src, mode="eval").body, "math")
+                rendered = _normalize_var_names(rendered, param_names)
+                lines.append(f"{_T1}{name} ≜ {rendered}")
+
+    if contract.uses or contract.emits:
+        lines.append("[bold green]effects:[/]")
+        if contract.uses:
+            for u in sorted(contract.uses):
+                lines.append(f"{_T1}[bold]uses:[/] {u}")
+        if contract.emits:
+            for channel in sorted(contract.emits):
+                for et in sorted(contract.emits[channel], key=lambda t: t.__name__):
+                    lines.append(
+                        f"{_T1}[bold]emits:[/] {channel} "
+                        f"[bright_blue]←[/] "
+                        f"[bold steel_blue3]Π msg: "
+                        f"[bright_blue]{et.__name__}[/][/]"
+                    )
+
+    exc_parts = _render_exception_dict(contract.exceptions, "math",
+                                        args_type=contract.args_type)
+    if exc_parts:
+        lines.append("[bold green]exceptions:[/]")
+        lines.extend(exc_parts)
+    lines.append("")
     return "\n".join(lines)
 
 
 _T = "    "
 _T1 = _T
 _T2 = _T * 2
+_T3 = _T * 3
 
 
 def _break_conjunction(formula: str) -> list[str]:
@@ -204,13 +244,13 @@ def _break_conjunction(formula: str) -> list[str]:
     return parts
 
 
-def _indent_lines(parts: list[str], level: int) -> list[str]:
+def _indent_lines(parts: list[str], level: int, conj: str = " ∧ ") -> list[str]:
     prefix = _T * level
     if len(parts) == 1:
         return [f"{prefix}{parts[0]}"]
     result = [f"{prefix}{parts[0]}"]
     for p in parts[1:]:
-        result.append(f"{prefix}  [#FFBF00]∧[/] {p}")
+        result.append(f"{prefix}{conj}{p}")
     return result
 
 
@@ -236,6 +276,196 @@ def render_all() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _render_predicate_list(predicates: list, mode: str) -> list[str]:
+    """Return one string per predicate, not joined — the caller formats alignment."""
+    if not predicates:
+        return []
+    rendered: list[str] = []
+    for p in predicates:
+        expr_src, param_names = _extract_return_expression_with_params(p)
+        if expr_src is None:
+            rendered.append(getattr(p, "__qualname__", str(p)))
+        else:
+            r = _render_expr(ast.parse(expr_src, mode="eval").body, mode)
+            rendered.append(_normalize_var_names(r, param_names))
+    return rendered
+
+
+def _render_quantifier_header(predicates: list, mode: str,
+                              kind: str = "forall",
+                              args_type: type | None = None) -> str | None:
+    """Extract the shared quantifier scope from the first predicate's parameters."""
+    if not predicates:
+        return None
+    _, param_names = _extract_return_expression_with_params(predicates[0])
+    if not param_names:
+        return None
+    canonical = _canonical_param_names(param_names)
+    if args_type is not None and hasattr(args_type, "__dataclass_fields__"):
+        arg_fields = [
+            f"{f.name}: {_type_str(f.type)}"
+            for f in args_type.__dataclass_fields__.values()
+        ]
+        canonical = [p for p in canonical if p != "args"] + arg_fields
+    if kind == "ensures" and len(canonical) >= 2:
+        pre_vars = [canonical[0]]
+        post_vars = [canonical[1], canonical[2]]
+        for a in canonical[3:]:
+            pre_vars.append(a)
+        pre_s = f"[#FFBF00]∀[/] {', '.join(pre_vars)}."
+        post_s = f"[#FFBF00]∃[/] {', '.join(post_vars)}."
+        return f"{pre_s}\n{_T}{post_s}"
+    return f"[#FFBF00]∀[/] {', '.join(canonical)}."
+
+
+def _type_str(typ) -> str:
+    """Pretty-print a type annotation."""
+    origin = getattr(typ, "__origin__", None)
+    if origin is not None:
+        args = ", ".join(_type_str(a) for a in typ.__args__)
+        name = getattr(origin, "__name__", str(origin))
+        return f"{name}[{args}]"
+    return getattr(typ, "__name__", str(typ))
+
+
+def _canonical_param_names(param_names: tuple[str, ...]) -> list[str]:
+    """Map lambda parameter names to canonical contract names, skipping 'args'."""
+    n = len(param_names)
+    if n == 1:
+        return ["state"]
+    if n == 2:
+        return ["state"]
+    if n >= 4:
+        first = param_names[0]
+        if first in ("old_s", "old_state", "prev"):
+            return ["old(state)", "result", "state"]
+        else:
+            return ["old(state)", "args", param_names[2], "state"]
+    return [p for p in param_names if p not in ("args",)]
+
+
+def _render_exception_dict(exceptions: list, mode: str,
+                           args_type: type | None = None) -> list[str]:
+    parts: list[str] = []
+    for exit_ in exceptions:
+        exc_type = exit_.raises
+        lines: list[str] = []
+        # Build spilled-out arg types for the quantifier
+        arg_vars = ["old(state)"]
+        if args_type is not None and hasattr(args_type, "__dataclass_fields__"):
+            arg_vars += [
+                f"{f.name}: {_type_str(f.type)}"
+                for f in args_type.__dataclass_fields__.values()
+            ]
+        else:
+            arg_vars.append("args")
+        lines.append(
+            f"{_T1}[#FFBF00]∀[/] {', '.join(arg_vars)}."
+        )
+        if exit_.when:
+            lines.append(f"{_T1}[bold green]when:[/]")
+            for fn in exit_.when:
+                expr_src, pn = _extract_return_expression_with_params(fn)
+                if expr_src:
+                    r = _render_expr(ast.parse(expr_src, mode="eval").body, mode)
+                    r = _normalize_var_names(r, pn)
+                    r = r.replace("state.", "old(state).")
+                    lines.append(f"{_T2}{r}")
+        lines.append(
+            f"{_T1}[bold green]raises:[/] exc: "
+            f"[bold steel_blue3]{exc_type.__name__}[/]"
+        )
+        lines.append(
+            f"{_T1}[bold green]ensures:[/] "
+            f"[#FFBF00]∃[/] exc, state."
+        )
+        if exit_.ensures:
+            for fn in exit_.ensures:
+                expr_src, pn = _extract_return_expression_with_params(fn)
+                if expr_src:
+                    r = _render_expr(ast.parse(expr_src, mode="eval").body, mode)
+                    r = _normalize_var_names(r, pn)
+                    lines.append(f"{_T2}{r}")
+        else:
+            lines.append(f"{_T2}[#FFBF00]⊤[/]")
+        parts.append("\n".join(lines))
+    return parts
+
+
+def _normalize_var_names(text: str, param_names: tuple[str, ...]) -> str:
+    """Replace lambda parameter names with canonical contract notation.
+
+    param_names are the lambda's own parameter names, in order.
+    Convention by arity:
+      1 param:  [state]
+      2 params: [state, args]
+      4 params: [old_state, args, result, new_state]
+    """
+    n = len(param_names)
+    if n == 1:
+        state = param_names[0]
+        text = text.replace(f"{state}.observed.", "state.")
+        text = text.replace(f"{state}.derived.", "state.")
+    elif n == 2:
+        state, args_p = param_names
+        text = text.replace(f"{args_p}.", "")
+        text = text.replace(f"{state}.observed.", "state.")
+        text = text.replace(f"{state}.derived.", "state.")
+    elif n >= 4:
+        first = param_names[0]
+        if first in ("old_s", "old_state", "prev"):
+            old_st, args_p, _result, new_st = param_names[:4]
+            text = text.replace(f"{old_st}.observed.", "old(state).")
+            text = text.replace(f"{old_st}.derived.", "old(state).")
+            text = text.replace(f"{old_st}.", "old(state).")
+            text = text.replace(f"{args_p}.", "")
+            text = text.replace(f"{new_st}.observed.", "state.")
+            text = text.replace(f"{new_st}.derived.", "state.")
+            text = text.replace(f"{new_st}.", "state.")
+            text = text.replace("old(state).observed.", "old(state).")
+            text = text.replace("old(state).derived.", "old(state).")
+        else:
+            # Exception or other: state, args, exc, after_state
+            state, args_p, _exc, after_st = param_names[:4]
+            text = text.replace(f"{args_p}.", "")
+            text = text.replace(f"{state}.observed.", "state.")
+            text = text.replace(f"{state}.derived.", "state.")
+            text = text.replace(f"{after_st}.observed.", "state.")
+            text = text.replace(f"{after_st}.derived.", "state.")
+            text = text.replace(f"{after_st}.", "state.")
+    text = text.replace("state.observed.", "state.")
+    text = text.replace("state.derived.", "state.")
+    return text
+
+
+def _extract_return_expression_with_params(
+    func: Callable,
+) -> tuple[str | None, tuple[str, ...]]:
+    """Like _extract_return_expression but also returns lambda parameter names."""
+    try:
+        source = textwrap.dedent(inspect.getsource(func))
+    except (OSError, TypeError):
+        return None, ()
+    stripped = source.strip()
+    # Strip trailing comma and any inline comment from dict-literal lambdas
+    if "#" in stripped:
+        stripped = stripped[:stripped.index("#")].strip()
+    stripped = stripped.rstrip(",")
+    idx = stripped.find("lambda ")
+    if idx > 0:
+        stripped = stripped[idx:]
+    try:
+        tree = ast.parse(stripped, mode="eval")
+        if isinstance(tree.body, ast.Lambda):
+            param_names = tuple(a.arg for a in tree.body.args.args)
+            return ast.unparse(tree.body.body), param_names
+    except SyntaxError:
+        pass
+    # Fall back to old extraction for named functions
+    expr = _extract_return_expression(func)
+    return expr, ()
+
+
 def _render_conjunction(records: list[ContractRecord], mode: str) -> str:
     parts: list[str] = []
     for r in records:
@@ -255,23 +485,49 @@ def _extract_return_expression(func: Callable) -> str | None:
         source = textwrap.dedent(inspect.getsource(func))
     except (OSError, TypeError):
         return None
+    # Lambdas in dict literals get source like "Key: lambda x: expr,"
+    # — strip the key prefix to isolate the lambda expression.
+    stripped = source.strip().rstrip(",")
+    # Find the lambda keyword in the source and start from there
+    idx = stripped.find("lambda ")
+    if idx > 0:
+        stripped = stripped[idx:]
     try:
-        tree = ast.parse(source)
+        tree = ast.parse(stripped, mode="eval")
     except SyntaxError:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return None
+        if not tree.body:
+            return None
+        if isinstance(tree.body[0], ast.Expr) and isinstance(
+            tree.body[0].value, ast.Lambda
+        ):
+            return ast.unparse(tree.body[0].value.body)
+        if not isinstance(tree.body[0], (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return None
+        for node in ast.walk(tree.body[0]):
+            if isinstance(node, ast.Return) and node.value is not None:
+                return ast.unparse(node.value)
         return None
-    if not tree.body or not isinstance(
-        tree.body[0], (ast.FunctionDef, ast.AsyncFunctionDef)
-    ):
-        return None
-    for node in ast.walk(tree.body[0]):
-        if isinstance(node, ast.Return) and node.value is not None:
-            return ast.unparse(node.value)
-    return None
+    if isinstance(tree.body, ast.Lambda):
+        return ast.unparse(tree.body.body)
+    return ast.unparse(tree.body)
 
 
 # ---------------------------------------------------------------------------
 # AST → string rendering (two modes: python, math)
 # ---------------------------------------------------------------------------
+
+
+def _type_name(node: ast.expr) -> str:
+    """Extract the type name from an isinstance second argument."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Tuple):
+        return " | ".join(_type_name(e) for e in node.elts)
+    return ast.unparse(node)
 
 
 def _render_expr(node: ast.expr, mode: str) -> str:
@@ -282,15 +538,32 @@ def _render_expr(node: ast.expr, mode: str) -> str:
 
 class _BaseRenderer(ast.NodeVisitor):
     def generic_visit(self, node):
-        return ast.unparse(node)
+        text = ast.unparse(node)
+        return text.replace("[", r"\[")
 
     @staticmethod
     def _is_quantifier_call(node: ast.Call, name: str) -> bool:
         return isinstance(node.func, ast.Name) and node.func.id == name
 
     @staticmethod
+    @staticmethod
     def _is_implies_call(node: ast.Call) -> bool:
         return isinstance(node.func, ast.Name) and node.func.id == "implies"
+
+    @staticmethod
+    def _is_isinstance_call(node: ast.Call) -> bool:
+        return isinstance(node.func, ast.Name) and node.func.id == "isinstance"
+
+    @staticmethod
+    def _is_all_call(node: ast.Call) -> bool:
+        return isinstance(node.func, ast.Name) and node.func.id == "all"
+
+    @staticmethod
+    def _generator_arg(node: ast.Call) -> tuple:
+        gen = node.args[0]
+        assert isinstance(gen, ast.GeneratorExp)
+        comp = gen.generators[0]
+        return comp.target, comp.iter, gen.elt
 
     @staticmethod
     def _lambda_arg(node: ast.Call) -> ast.arg:
@@ -335,6 +608,8 @@ class _PythonRenderer(_BaseRenderer):
         return ast.unparse(node)
 
     def visit_Call(self, node: ast.Call) -> str:
+        if self._is_isinstance_call(node):
+            return f"{self.visit(node.args[0])} : [bold]{_type_name(node.args[1])}[/]"
         if self._is_quantifier_call(node, "forall"):
             domain = self.visit(node.args[0])
             body = self.visit(self._lambda_body(node))
@@ -367,7 +642,7 @@ class _MathRenderer(_BaseRenderer):
     """Render using mathematical/logical notation."""
 
     def visit_BoolOp(self, node: ast.BoolOp) -> str:
-        return self._render_bool_op(node, " ∧ ", " ∨ ")
+        return self._render_bool_op(node, "∧", "∨")
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> str:
         if isinstance(node.op, ast.Not):
@@ -381,7 +656,11 @@ class _MathRenderer(_BaseRenderer):
             right = self.visit(comp)
             parts.append(f"{left} {_math_op(op)} {right}")
             left = right
-        return " ∧ ".join(parts) if len(parts) > 1 else parts[0]
+        result = " ∧ ".join(parts) if len(parts) > 1 else parts[0]
+        # Wrap is/isnot compares so a = None = b = None reads as (a = None) = (b = None)
+        if any(isinstance(o, (ast.Is, ast.IsNot)) for o in node.ops):
+            result = f"({result})"
+        return result
 
     def visit_BinOp(self, node: ast.BinOp) -> str:
         left = self.visit(node.left)
@@ -389,13 +668,27 @@ class _MathRenderer(_BaseRenderer):
         return f"{left} {_bin_op(node.op)} {right}"
 
     def visit_Call(self, node: ast.Call) -> str:
+        if self._is_isinstance_call(node):
+            return (
+                f"{self.visit(node.args[0])} : "
+                f"[bright_blue]{_type_name(node.args[1])}[/]"
+            )
+        if self._is_all_call(node):
+            target, iter_, body = self._generator_arg(node)
+            param = self.visit(target)
+            domain = self.visit(iter_)
+            body_s = self.visit(body)
+            return (
+                f"[#FFBF00]∀[/] {param} "
+                f"[#FFBF00]∈[/] [bright_blue]{domain}[/]. {body_s}"
+            )
         if self._is_quantifier_call(node, "forall"):
             domain = self.visit(node.args[0])
             body = self.visit(self._lambda_body(node))
             param = self._lambda_arg(node).arg
             return (
                 f"[#FFBF00]∀[/] {param} "
-                f"[bright_blue]∈[/] [bright_blue]{domain}[/]. {body}"
+                f"[#FFBF00]∈[/] [bright_blue]{domain}[/]. {body}"
             )
         if self._is_quantifier_call(node, "exists"):
             domain = self.visit(node.args[0])
@@ -403,7 +696,7 @@ class _MathRenderer(_BaseRenderer):
             param = self._lambda_arg(node).arg
             return (
                 f"[#FFBF00]∃[/] {param} "
-                f"[bright_blue]∈[/] [bright_blue]{domain}[/]. {body}"
+                f"[#FFBF00]∈[/] [bright_blue]{domain}[/]. {body}"
             )
         if self._is_implies_call(node):
             p = self.visit(node.args[0])
@@ -436,7 +729,7 @@ class _MathRenderer(_BaseRenderer):
     def visit_Subscript(self, node: ast.Subscript) -> str:
         value = self.visit(node.value)
         subscript = self.visit(node.slice)
-        return f"{value}[{subscript}]"
+        return f"{value}\\[{subscript}]"
 
     def visit_Name(self, node: ast.Name) -> str:
         return node.id
@@ -464,6 +757,10 @@ def _math_op(op: ast.cmpop) -> str:
         return "[bright_blue]∈[/]"
     if isinstance(op, ast.NotIn):
         return "[bright_blue]∉[/]"
+    if isinstance(op, ast.Is):
+        return "[#FFBF00]=[/]"
+    if isinstance(op, ast.IsNot):
+        return "[#FFBF00]≠[/]"
     return ast.unparse(op)
 
 

@@ -22,7 +22,8 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import Any
 
-from examples.bank_transfer.contracts import (
+from examples.bank_transfer.events import EventLog, FundsReceived, TransferCompleted
+from examples.bank_transfer.types import (
     Account,
     SimulatedFaultError,
     TransferArgs,
@@ -43,7 +44,7 @@ class TransferExecutionContext:
     """The concrete world the implementation operates on."""
 
     db_path: str
-    trace: list[str] = field(default_factory=list)
+    events: EventLog = field(default_factory=EventLog)
     ghost: TransferGhost = field(default_factory=TransferGhost)
 
 
@@ -119,7 +120,7 @@ class TransferMaterializer:
             _populate(conn, witness.accounts, witness.limits)
         return TransferExecutionContext(
             db_path=path,
-            trace=[],
+            events=EventLog(),
             ghost=witness.ghost,
         )
 
@@ -256,7 +257,23 @@ class _FaultableTransferService:
                 amount=args.amount,
                 message="Simulated runtime fault",
             )
-        return self._inner.execute(context, args)
+        result = self._inner.transfer(
+            context.db_path, args.source_id, args.target_id, args.amount
+        )
+        context.events.emit(
+            "audit",
+            TransferCompleted(
+                transaction_id=result.transaction_id,
+                source_id=args.source_id,
+                target_id=args.target_id,
+                amount=args.amount,
+            ),
+        )
+        context.events.emit(
+            "notification",
+            FundsReceived(target_id=args.target_id, amount=args.amount),
+        )
+        return result
 
 
 _fault_state = _FaultState()
@@ -265,39 +282,98 @@ _fault_state = _FaultState()
 class TransferScenarioRunner:
     """Bundles the domain wiring needed to run a scenario.
 
-    A single instance is shared by the CLI ``--verify`` / ``--pre-only``
-    commands and the pytest tests — no duplication.
+    Uses the new Contract model — all predicates are in one place,
+    with no dependency on SpecScenario or the registry.
     """
 
-    def __init__(self, feature_path: str, scenario_name: str) -> None:
-        self._feature_path = feature_path
-        self._scenario_name = scenario_name
+    def __init__(self) -> None:
+        from examples.bank_transfer.contract import transfer_contract
+
+        self._contract = transfer_contract
         self._materializer = TransferMaterializer()
         self._projection = TransferProjection()
         self._impl = _FaultableTransferService()
         self._fault_state = _fault_state
 
+    def _run_impl(self, context, args, outcome, fault_name, before):
+        if fault_name:
+            self._fault_state.inject(fault_name)
+        if outcome and outcome.startswith("error:"):
+            expected = outcome.split(":", 1)[1]
+        else:
+            expected = None
+        try:
+            return self._impl.execute(context, args), None
+        except Exception as exc:
+            code = getattr(type(exc), "code", type(exc).__name__)
+            matching = [
+                e for e in self._contract.exceptions
+                if getattr(e.raises, "code", e.raises.__name__) == code
+            ]
+            if matching:
+                after = self._projection.snapshot(context)
+                for exit_ in matching:
+                    if not all(p(before, args) for p in exit_.when):
+                        continue
+                    for p in exit_.ensures:
+                        if not p(before, args, exc, after):
+                            raise RuntimeError(
+                                "exception ensures violated"
+                            ) from exc
+                    break
+                else:
+                    raise RuntimeError(
+                        f"exception {code} has no matching when"
+                    ) from exc
+            if expected and code != expected:
+                raise
+            return exc, code
+
     def run(self, row: dict[str, str]) -> tuple[bool, str]:
-        """Full symmetric flow with implementation.
-
-        Returns (passed, message) — consumed by the CLI and by tests.
-        """
-        from specsaver import SpecScenario, run_scenario
-
-        scenario = SpecScenario.from_feature(self._feature_path, self._scenario_name)
         witness = build_witness(row)
         context = self._materializer.materialize(witness)
+        outcome = row.get("outcome", "")
+        fault_name = row.get("fault")
+        args = witness.args
         try:
-            run_scenario(
-                scenario,
-                witness,
-                materializer=self._materializer,
-                projection=self._projection,
-                impl=self._impl,
-                fault_injector=self._fault_state,
-                fault_name=row.get("fault"),
-                outcome=row.get("outcome"),
-            )
+            projection = TransferProjection()
+            before = projection.snapshot(context)
+            for inv in self._contract.invariants:
+                if not inv(before):
+                    return False, f"invariant failed: {inv}"
+            pre_passed = all(p(before, args) for p in self._contract.requires)
+            if outcome == "rejected":
+                if pre_passed:
+                    return False, "expected rejection but admissibility held"
+                return True, "REJECTED"
+            if not pre_passed:
+                return False, "admissibility failed"
+            if outcome == "success":
+                result, _ = self._run_impl(context, args, outcome, fault_name, before)
+                after = projection.snapshot(context)
+                for ens in self._contract.ensures:
+                    if not ens(before, args, result, after):
+                        return False, "postcondition failed"
+                for inv in self._contract.invariants:
+                    if not inv(after):
+                        return False, "invariant failed after"
+                for channel, events in self._contract.emits.items():
+                    for event in events:
+                        if not context.events.emitted(channel, event):
+                            return False, f"missing emission: {channel}/{event}"
+                return True, "PASS"
+            result, code = self._run_impl(context, args, outcome, fault_name, before)
+            if outcome.startswith("error:") and code != outcome.split(":", 1)[1]:
+                return False, f"expected {outcome} but got code {code}"
+            after = projection.snapshot(context)
+            # On error paths, postconditions don't apply — exceptions handle that.
+            if outcome == "success":
+                for ens in self._contract.ensures:
+                    if not ens(before, args, result, after):
+                        return False, "postcondition failed"
+            for inv in self._contract.invariants:
+                if not inv(after):
+                    return False, "invariant failed after"
             return True, "PASS"
         except Exception as exc:
             return False, str(exc)
@@ -305,33 +381,20 @@ class TransferScenarioRunner:
             cleanup(context)
 
     def check_pre(self, row: dict[str, str]) -> tuple[bool, str]:
-        """Check admissibility + invariants only — no implementation needed.
-
-        Useful during specification authoring, before any impl exists.
-        """
-        from specsaver import SpecScenario, run_scenario
-
-        scenario = SpecScenario.from_feature(self._feature_path, self._scenario_name)
         witness = build_witness(row)
-        result = run_scenario(
-            scenario,
-            witness,
-            materializer=self._materializer,
-            projection=self._projection,
-            impl=None,
-            outcome=row.get("outcome"),
-        )
-        outcome = row.get("outcome", "")
-        if outcome == "rejected":
-            if result.admissibility_held:
-                return False, "FAIL: expected rejection but admissibility held"
-            return True, "REJECTED (pre-only)"
-        elif outcome == "success":
-            if not result.admissibility_held:
-                return False, f"FAIL: {result.describe_failures()}"
-            return True, "PASS (pre-only)"
-        elif outcome and outcome.startswith("error:"):
-            if not result.admissibility_held:
-                return False, f"FAIL: {result.describe_failures()}"
-            return True, "ADMISSIBLE (pre-only)"
-        return True, "OK (pre-only)"
+        projection = TransferProjection()
+        context = self._materializer.materialize(witness)
+        try:
+            before = projection.snapshot(context)
+            args = witness.args
+            pre_passed = all(
+                p(before, args) for p in self._contract.requires
+            )
+            outcome = row.get("outcome", "")
+            if outcome == "rejected":
+                msg = "REJECTED" if not pre_passed else "FAIL: admissibility held"
+                return (not pre_passed, msg)
+            msg = "PASS" if pre_passed else "FAIL: admissibility failed"
+            return (pre_passed, msg)
+        finally:
+            cleanup(context)

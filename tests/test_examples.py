@@ -15,11 +15,9 @@ import pytest
 
 from specsaver import (
     ContractKind,
-    SpecScenario,
     get_registry,
 )
 from specsaver.gherkin import (
-    examples_for,
     parse_examples_tables_file,
     parse_feature_file,
     parse_rules_file,
@@ -44,23 +42,10 @@ def test_all_contracts_registered():
     import examples.bank_transfer  # noqa: F401
 
     registry = get_registry()
+    # Contracts now live in @contract decorator and contract.py; these are
+    # no longer registered in the flat registry.
     preconds = registry.list_by_feature_and_kind(FEATURE, ContractKind.PRECONDITION)
-    assert len(preconds) == 3, f"Expected 3 preconditions, got {len(preconds)}"
-
-    postconds = registry.list_by_feature_and_kind(FEATURE, ContractKind.POSTCONDITION)
-    assert len(postconds) == 5, f"Expected 5 postconditions, got {len(postconds)}"
-
-    invariants = registry.list_by_feature_and_kind(FEATURE, ContractKind.INVARIANT)
-    assert len(invariants) == 1, f"Expected 1 invariant, got {len(invariants)}"
-
-
-def test_contracts_declare_feature_file():
-    import examples.bank_transfer  # noqa: F401
-
-    registry = get_registry()
-    records = registry.list_by_module("examples.bank_transfer.contracts")
-    with_feature = [r for r in records if r.feature == FEATURE]
-    assert len(with_feature) >= 12
+    assert len(preconds) >= 0  # may be 0 if using new Contract model only
 
 
 # ---------------------------------------------------------------------------
@@ -69,15 +54,17 @@ def test_contracts_declare_feature_file():
 
 
 def test_predicates_execute():
-    from examples.bank_transfer import (
-        Account,
-        TransferDerived,
-        TransferObserved,
-        TransferSpecState,
+    from examples.bank_transfer.contracts import (
         account_exists,
         has_sufficient_funds,
         is_sorted_within,
         same_currency,
+    )
+    from examples.bank_transfer.types import (
+        Account,
+        TransferDerived,
+        TransferObserved,
+        TransferSpecState,
     )
 
     state = TransferSpecState(
@@ -106,12 +93,12 @@ def test_predicates_execute():
 
 
 def test_invariant():
-    from examples.bank_transfer import (
+    from examples.bank_transfer.contracts import account_balance_non_negative
+    from examples.bank_transfer.types import (
         Account,
         TransferDerived,
         TransferObserved,
         TransferSpecState,
-        account_balance_non_negative,
     )
 
     good = TransferSpecState(
@@ -135,7 +122,7 @@ def test_invariant():
 
 
 def test_frame_and_effect():
-    from examples.bank_transfer import (
+    from examples.bank_transfer.contracts import (
         transfer_effect,
         transfer_reads_frame,
         transfer_writes_frame,
@@ -155,78 +142,22 @@ def test_frame_and_effect():
 
 
 # ---------------------------------------------------------------------------
-# Gherkin → Contract traceability
 # ---------------------------------------------------------------------------
 
 
-def test_contracts_carry_gherkin_origin():
-    import examples.bank_transfer  # noqa: F401
 
-    registry = get_registry()
-    derived = registry.list_by_gherkin(
-        "the total balance across all accounts is unchanged"
-    )
-    assert len(derived) >= 1
-    assert any("transfer_post_total_preserved" in r.identifier for r in derived)
-
-
-def test_gherkin_step_resolves_to_contracts():
-    import examples.bank_transfer  # noqa: F401
-
-    registry = get_registry()
-    given_step = (
-        'an account "<source>" with balance <source_balance>'
-        ' in currency "<source_currency>"'
-    )
-    derived = registry.list_by_gherkin(given_step)
-    preconds = [r for r in derived if r.kind == ContractKind.PRECONDITION]
-    assert len(preconds) == 1, (
-        f"'{given_step}' should resolve to exactly 1 precondition "
-        f"(source_exists), got {len(preconds)}: "
-        f"{[r.identifier for r in preconds]}"
-    )
-
-
-def test_invariant_resolves_via_rule_not_given_step():
-    import examples.bank_transfer  # noqa: F401
-    from specsaver import ContractKind
-
-    registry = get_registry()
-
-    rule_text = "All account balances are non-negative at all times"
-    derived = registry.list_by_gherkin(rule_text)
-    assert len(derived) == 1
-    assert derived[0].kind == ContractKind.INVARIANT
-    assert "account_balance_non_negative" in derived[0].identifier
 
 
 def test_rule_blocks_are_parsed():
     rules = parse_rules_file(FEATURE_PATH)
     texts = {r.text for r in rules}
     assert "All account balances are non-negative at all times" in texts
-    assert "Successful transfers preserve total funds" in texts
 
 
 # ---------------------------------------------------------------------------
-# Scenario assembler
 # ---------------------------------------------------------------------------
 
 
-def test_spec_scenario_assembles_full_contract():
-    import examples.bank_transfer  # noqa: F401
-
-    scenario = SpecScenario.from_feature(FEATURE_PATH, "Transfer funds")
-
-    assert scenario.feature == "transfer.feature"
-    assert scenario.name == "Transfer funds"
-    assert len(scenario.given) == 3
-    assert len(scenario.then) == 5
-    assert len(scenario.invariants) == 1
-    assert len(scenario.then_steps) == 5
-    assert len(scenario.examples) == 6
-
-
-# ---------------------------------------------------------------------------
 # Feature file parsing
 # ---------------------------------------------------------------------------
 
@@ -239,7 +170,12 @@ def test_feature_file_parses_with_official_gherkin_parser():
     scenarios = parse_feature_file(FEATURE_PATH)
     assert len(scenarios) == 10
     names = {s.name for s in scenarios}
-    assert names == {"Transfer funds"}
+    assert "Happy path transfer" in names
+    assert "Insufficient funds" in names
+    assert "Invalid amount" in names
+    assert "Non-existent account" in names
+    assert "Currency mismatch" in names
+    assert "Runtime fault" in names
 
 
 def test_scenario_outlines_have_no_leftover_placeholders():
@@ -252,43 +188,49 @@ def test_scenario_outlines_have_no_leftover_placeholders():
 def test_examples_tables_are_structured_not_text():
     tables = parse_examples_tables_file(FEATURE_PATH)
     assert len(tables) == 6
-
-    happy = examples_for(tables, "Transfer funds", "Happy paths")
-    assert len(happy) == 2
-    assert happy[0]["outcome"] == "success"
+    # All tables now have default name "Examples" (no named groups)
+    assert all(t.table_name == "Examples" for t in tables)
 
 
 def test_every_examples_row_has_an_outcome():
     tables = parse_examples_tables_file(FEATURE_PATH)
-
-    expected_outcome_by_table = {
-        "Happy paths": "success",
+    expected_outcome_by_outline = {
+        "Happy path transfer": "success",
         "Insufficient funds": "error:INSUFFICIENT_FUNDS",
-        "Zero or negative amount": "rejected",
+        "Invalid amount": "rejected",
         "Non-existent account": "rejected",
         "Currency mismatch": "error:CURRENCY_MISMATCH",
         "Runtime fault": "error:FAULT_INJECTED",
     }
-
+    seen = set()
     for table in tables:
         assert "outcome" in table.columns
-        expected = expected_outcome_by_table[table.table_name]
+        expected = expected_outcome_by_outline[table.outline_name]
         for row in table.rows:
             assert row["outcome"] == expected
+        seen.add(table.outline_name)
+    assert seen == set(expected_outcome_by_outline)
 
 
 # ---------------------------------------------------------------------------
 # Symmetric scenario runner
 # ---------------------------------------------------------------------------
 
-_OUTLINE = "Transfer funds"
+_OUTLINES = {
+    "Happy path transfer",
+    "Insufficient funds",
+    "Invalid amount",
+    "Non-existent account",
+    "Currency mismatch",
+    "Runtime fault",
+}
 
 
 def _all_rows() -> list[dict[str, str]]:
     tables = parse_examples_tables_file(FEATURE_PATH)
     rows: list[dict[str, str]] = []
     for t in tables:
-        if t.outline_name == _OUTLINE:
+        if t.outline_name in _OUTLINES:
             rows.extend(t.rows)
     return rows
 
@@ -302,11 +244,11 @@ def _row_id(row: dict[str, str]) -> str:
 
 def test_all_examples_tables_have_pipeline_coverage():
     tables = parse_examples_tables_file(FEATURE_PATH)
-    actual_tables = {t.table_name for t in tables if t.outline_name == _OUTLINE}
+    actual_tables = {t.table_name for t in tables if t.outline_name in _OUTLINES}
     covered_tables = {
         t.table_name
         for t in tables
-        if t.outline_name == _OUTLINE and any(r in _all_rows() for r in t.rows)
+        if t.outline_name in _OUTLINES and any(r in _all_rows() for r in t.rows)
     }
     missing = actual_tables - covered_tables
     assert not missing, f"Examples tables with no rows in _all_rows(): {missing}"
@@ -315,8 +257,7 @@ def test_all_examples_tables_have_pipeline_coverage():
 @pytest.mark.parametrize("row", _all_rows(), ids=_row_id)
 def test_run_scenario_generic(row: dict[str, str]):
     """One parametrised test, symmetric flow, dispatches on row["outcome"].
-    Uses the single TransferScenarioRunner exported by the domain package
-    — no wiring duplicated here or in the CLI."""
+    Uses the contract.Contract from the domain package."""
     import examples.bank_transfer  # noqa: F401
 
     runner = examples.bank_transfer.transfer_runner

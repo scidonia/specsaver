@@ -197,6 +197,8 @@ def test_render_all_multiple_entry_points():
 
 
 def test_render_all_empty():
+    from specsaver.registry import get_registry
+    get_registry().clear()
     assert render_all() == "No contracts registered."
 
 

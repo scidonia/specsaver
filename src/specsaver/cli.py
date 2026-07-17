@@ -84,9 +84,62 @@ def render(
         typer.echo(f"Error importing {module}: {e}", err=True)
         raise typer.Exit(1) from e
 
-    from specsaver.render import render_all
+    import sys
 
-    typer.echo(render_all())
+    from specsaver.contract_model import Contract
+    from specsaver.render import render_contract_from_object
+
+    mod = sys.modules.get(module)
+    if mod is None:
+        typer.echo("No contracts registered.", err=True)
+        raise typer.Exit(1)
+
+    contracts = [
+        v for v in vars(mod).values()
+        if isinstance(v, Contract)
+    ]
+    if not contracts:
+        typer.echo("No Contract objects found in module.", err=True)
+        raise typer.Exit(1)
+
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+
+    mod = sys.modules.get(module)
+    if mod is None:
+        typer.echo("No contracts registered.", err=True)
+        raise typer.Exit(1)
+
+    contracts = [
+        v for v in vars(mod).values()
+        if isinstance(v, Contract)
+    ]
+    if not contracts:
+        typer.echo("No Contract objects found in module.", err=True)
+        raise typer.Exit(1)
+
+    console = Console()
+    from rich.markup import escape
+    for c in contracts:
+        body = render_contract_from_object(c)
+        qualname = getattr(c.impl, "__qualname__", "?")
+        modname = getattr(c.impl, "__module__", "?")
+        entry = f"{modname}.{qualname}"
+        subtitle = f"feature: {c.feature}"
+        if c.when:
+            subtitle += f"  |  when: {escape(c.when)}"
+        console.print(
+            Panel.fit(
+                Text.from_markup(body),
+                title=f"[bold]Contract:[/] {escape(entry)}",
+                subtitle=subtitle,
+                title_align="left",
+                subtitle_align="left",
+                border_style="bold",
+            )
+        )
+        console.print()
 
 
 @app.command()
@@ -113,11 +166,22 @@ def trace(
     ),
 ) -> None:
     """Trace Gherkin scenarios to their contracts, and vice versa."""
+    import sys
+
+    from specsaver.contract_model import Contract
+
     try:
         _import_module(module)
     except ImportError as e:
         typer.echo(f"Error importing {module}: {e}", err=True)
         raise typer.Exit(1) from e
+
+    mod = sys.modules.get(module)
+    contracts: list = []
+    if mod is not None:
+        for v in vars(mod).values():
+            if isinstance(v, Contract):
+                contracts.append(v)
 
     from specsaver.trace import trace_contract, trace_scenarios, trace_steps
 
@@ -126,7 +190,8 @@ def trace(
     elif mode == "scenarios":
         output = trace_scenarios(search)
     else:
-        output = trace_contract(search, verify=verify, pre_only=pre_only)
+        output = trace_contract(search, contracts=contracts,
+                                verify=verify, pre_only=pre_only)
     typer.echo(output)
 
 

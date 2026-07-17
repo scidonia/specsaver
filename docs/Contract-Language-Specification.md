@@ -13,11 +13,23 @@ property-based test generation.  The contract language is the **single source of
 semantic truth** — no testing or verification artifact may introduce
 independent semantics.
 
-Contracts are grouped by **feature** (the Gherkin ``.feature`` filename)
-and traceable to specific Gherkin steps via the ``from_gherkin`` parameter.
-The ``SpecScenario`` assembler produces the full contract for one scenario
-by cross-referencing Gherkin step text against the registry.  See the
-*Specification-Driven Testing Architecture* document for the full design.
+Contracts are **external to the implementation**.  They are declared in a
+standalone module and reference an existing function by name — the
+implementation is never modified.  Two declaration styles are supported:
+
+1. **Standalone** — ``Contract(impl, args_type=..., feature=..., ...)`` for
+   existing (brownfield) code.
+2. **Decorator** — ``@contract(args_type=..., feature=..., ...)`` on a new
+   implementation class.
+
+Both produce an identical ``Contract`` object holding all predicates in
+one place.  The ``Contract`` is the primary API; the older per-contract
+decorator registry (``@precondition``/``@postcondition``/``@invariant``
+registered individually) remains available for backward compatibility
+but is not used by the current test harness or CLI tools.
+
+See the *Specification-Driven Testing Architecture* document for the
+full design and step-by-step guide.
 
 ---
 
@@ -718,48 +730,62 @@ architecture.
 
 ---
 
-## 12. Contract Registry
+## 12. The `Contract` object
 
-Every contract proposition is registered with a stable, fully-qualified
-identifier:
+Contracts are external to the implementation — they reference an existing
+function by name without modifying the function or its class.
 
-```
-<module>.<kind>.<qualname>
-```
-
-Examples:
-```
-examples.bank_transfer.contracts.precondition.transfer_pre_source_exists
-examples.bank_transfer.contracts.postcondition.transfer_post_total_preserved
-examples.bank_transfer.contracts.invariant.account_balance_non_negative
-examples.bank_transfer.contracts.exceptional.transfer_exc_insufficient_funds
-examples.bank_transfer.contracts.writes.transfer_writes_frame
-examples.bank_transfer.contracts.effect.transfer_effect
-```
-
-Contracts are grouped by **feature** (the ``.feature`` filename) rather
-than by an arbitrary operation name:
+### 12.1 Declaration
 
 ```python
-registry.list_by_feature_and_kind("transfer.feature", ContractKind.PRECONDITION)
-registry.list_by_feature_and_kind("transfer.feature", ContractKind.EXCEPTIONAL)
+from specsaver.contract_model import Contract
+
+transfer_contract = Contract(
+    TransferService.transfer,    # existing function — never modified
+    args_type=TransferArgs,      # explicit frozen dataclass, not derived
+    feature="transfer.feature",
+    when='funds of <amount> are transferred ...',
+    observe=TransferProjection().snapshot,
+    requires=[...], ensures=[...], exceptions={...}, invariants=[...],
+    ghost_state=..., ghost_init=..., ghost_transitions=[...],
+    writes={...}, reads={...}, uses={...}, emits={...},
+)
 ```
 
-The ``SpecScenario`` assembler cross-references Gherkin step text against
-the registry via ``list_by_gherkin(step_text)`` to produce the full
-assembled contract for one scenario.  The ``entry_point``-based lookup
-methods (``preconditions_for``, ``postconditions_for``,
-``invariants_for``) remain available for backward compatibility but are
-not used by the current architecture.
+The `Contract` object bundles all predicates, frame conditions, effects,
+and ghost state for one operation.  The `args_type` is always declared
+explicitly — it is never derived from the implementation's positional
+parameter order, so the implementation can have any signature.
 
-The registry records for each identifier:
+### 12.2 Decorator variant
 
-- the **implementation** (the Python function body);
-- the **contract kind** (pre, post, invariant, exceptional, etc.);
-- **dependencies** (which other contracts this one calls);
-- **proof status** (unverified, verified, counterexample found);
-- **testing status** (untested, tested, flaky);
-- the **source location** (file, line, column).
+```python
+from specsaver.contract_model import contract
+
+@contract(args_type=TransferArgs, feature="transfer.feature", ...)
+class TransferService:
+    def transfer(self, db_path, source_id, target_id, amount):
+        ...
+```
+
+The decorator auto-discovers the first non-underscore method, creates a
+`Contract`, and stores it on ``cls.__specsaver_contract__``.
+
+### 12.3 Invocation
+
+The `Contract.invoke(instance, env, args)` method auto-marshals `Args`
+fields to the implementation's parameter names, handling positional,
+keyword-only, and default values automatically:
+
+```python
+svc = TransferService()
+result = contract.invoke(svc, db_path, TransferArgs("A1", "A2", 30))
+```
+
+The `invoke` method matches `Args` field names to the implementation's
+parameter names — no positional counting, no `env_count` parameter.
+`Context[T]` can optionally annotate the environment parameter for
+greenfield code, but is never required.
 
 ---
 

@@ -32,16 +32,20 @@ Feature file: transfer.feature
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
-
+from examples.bank_transfer.types import (
+    CurrencyMismatchError,
+    InsufficientFundsError,
+    SimulatedFaultError,
+    TransferArgs,
+    TransferError,
+    TransferReceipt,
+    TransferSpecState,
+)
 from specsaver import (
-    Args,
     EffectSpec,
     Event,
     Field,
     Frame,
-    Result,
     effect,
     exceptional,
     forall,
@@ -58,108 +62,15 @@ from specsaver import (
 FEATURE = "transfer.feature"
 
 
-# ---------------------------------------------------------------------------
-# Domain types
-# ---------------------------------------------------------------------------
+# -- exception hierarchy re-exported from types.py — real Python exceptions -----
+# TransferError, InsufficientFundsError, CurrencyMismatchError,
+# AccountNotFoundError, SimulatedFaultError — see types.py
 
+# -- SpecState re-exported from types.py —
+# TransferObserved, TransferDerived, TransferGhost, TransferSpecState
 
-@dataclass
-class Account:
-    id: str
-    balance: int
-    currency: str
-
-
-@dataclass
-class TransferLimits:
-    """Transfer limits — observed state (stored in a DB table)."""
-
-    per_transfer_max: int | None = None
-    daily_remaining: int | None = None
-    monthly_remaining: int | None = None
-
-
-@dataclass(frozen=True)
-class TransferArgs(Args):
-    source_id: str
-    target_id: str
-    amount: int
-
-
-@dataclass(frozen=True)
-class TransferReceipt(Result):
-    """Successful transfer outcome."""
-
-    transaction_id: str
-    source_id: str
-    target_id: str
-    amount: int
-
-
-# -- Exception hierarchy — real Python exceptions, natural for Python -----
-
-
-class TransferError(Exception):
-    """Base for all transfer domain exceptions."""
-
-    def __init__(self, source_id: str, target_id: str, amount: int,
-                 message: str = "") -> None:
-        self.source_id = source_id
-        self.target_id = target_id
-        self.amount = amount
-        self.message = message
-
-
-class InsufficientFundsError(TransferError):
-    code = "INSUFFICIENT_FUNDS"
-
-
-class CurrencyMismatchError(TransferError):
-    code = "CURRENCY_MISMATCH"
-
-
-class AccountNotFoundError(TransferError):
-    code = "ACCOUNT_NOT_FOUND"
-
-
-class SimulatedFaultError(TransferError):
-    code = "FAULT_INJECTED"
-
-
-# ---------------------------------------------------------------------------
-# SpecState — immutable contract-facing snapshot with provenance
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class TransferObserved:
-    """State read from the concrete database."""
-
-    accounts: Mapping[str, Account]
-    limits: TransferLimits | None = None
-
-
-@dataclass(frozen=True)
-class TransferDerived:
-    """Pure values calculated from observed state."""
-
-    total_balance: int = 0
-
-
-@dataclass(frozen=True)
-class TransferGhost:
-    """Proof- or specification-only state — not recoverable from the DB."""
-
-    initial_total: int | None = None
-
-
-@dataclass(frozen=True)
-class TransferSpecState:
-    """The full contract-facing state, decomposed by provenance."""
-
-    observed: TransferObserved
-    derived: TransferDerived
-    ghost: TransferGhost = field(default_factory=TransferGhost)
+# -- Domain types re-exported from types.py —
+# Account, TransferLimits, TransferArgs, TransferReceipt
 
 
 # ---------------------------------------------------------------------------

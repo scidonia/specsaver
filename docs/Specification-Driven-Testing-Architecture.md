@@ -180,28 +180,98 @@ the database: initial totals, linearization witnesses, abstract
 ownership, proof witnesses.  The implementation must not depend
 computationally on genuine ghost fields.
 
-### Contracts
+### Contracts — the `Contract` model
 
-Each contract is a pure function with canonical signatures:
+Contracts are **external to the implementation**.  They are declared in a
+separate file (or directory) and reference an existing implementation by
+function reference, not by modifying the implementation's source code.
 
-| Kind          | Signature                                    |
-|---------------|----------------------------------------------|
-| Admissibility | `(state: SpecState, args: Args) → bool`     |
-| Case condition| `(state: SpecState, args: Args) → bool`     |
-| Transition    | `(old_state: SpecState, args: Args, result: Result, new_state: SpecState) → bool` |
-| Frame         | `(old_state: SpecState, args: Args, result: Result, new_state: SpecState) → bool` |
-| Invariant     | `(state: SpecState) → bool`                 |
+Two declaration styles are supported:
 
-These never change.  Ghost state, environment, history — all of it
-lives as fields on `SpecState`, not as extra parameters.
+**Standalone** — for existing (brownfield) code:
 
-Rules:
-1. **One contract per `from_gherkin` association.**  No implicit ANDs.
-2. **Inline the Gherkin text** in each decorator.
-3. **`from_gherkin` must match the feature file exactly.**
-4. **No `entry_point`.**  Contracts are grouped by `feature`.
-5. **Transitions are organised by operation case**, not by
-   self-guarding postconditions.  See §11–12 of the Symmetric document.
+```python
+# examples/<domain>/contract.py
+from specsaver.contract_model import Contract
+
+transfer_contract = Contract(
+    TransferService.transfer,          # existing function — never modified
+    args_type=TransferArgs,            # explicit Args type, not auto-derived
+    feature="transfer.feature",        # the .feature file this belongs to
+    when='funds of <amount> are transferred ...',
+    observe=TransferProjection().snapshot,  # how to lift DB → SpecState
+    requires=[...], ensures=[...], exceptions={...}, invariants=[...],
+    ghost_state=TransferGhost, ghost_init=..., ghost_transitions=[...],
+    writes={...}, reads={...}, uses={...}, emits={...},
+)
+```
+
+**Decorator** — for greenfield code:
+
+```python
+# examples/<domain>/service.py
+from specsaver.contract_model import contract
+
+@contract(args_type=TransferArgs, feature="transfer.feature", ...)
+class TransferService:
+    def transfer(self, db_path, source_id, target_id, amount):
+        ...
+```
+
+Both produce an identical `Contract` object.  The `Contract` holds:
+
+| Field           | Purpose                                     |
+|-----------------|---------------------------------------------|
+| `requires`      | Admissibility predicates `(state, args) → bool` |
+| `ensures`       | Transition predicates `(old_s, args, result, new_s) → bool` |
+| `exceptions`    | Exception type → condition `(state, args) → bool` |
+| `invariants`    | Ambient cross-cutting `(state) → bool` |
+| `ghost_state`   | Spec-only type (e.g. `TransferGhost`) |
+| `ghost_init`    | `(witness) → ghost_instance` |
+| `ghost_transitions` | `(old_g, args, result, new_g) → bool` |
+| `observe`       | `(db_connection) → ObservedState` — the projection |
+| `writes`/`reads` | Frame conditions |
+| `uses`/`emits`  | Side-effect declarations |
+| `impl`          | The unmodified implementation function |
+| `args_type`     | Explicit frozen dataclass — never derived by position |
+
+The test runner reads `Contract` objects at module level and wires them
+to the Gherkin examples.  The implementation is never imported by the
+contract — contracts reference the function, not the other way around.
+
+### Organising contracts
+
+A domain may have multiple entry points.  Each gets its own contract file:
+
+```
+examples/bank_transfer/
+    contract.py    # from .service import TransferService
+                   # transfer_contract = Contract(TransferService.transfer, ...)
+
+    another_entry_point/
+        contract.py  # contract = Contract(AnotherService.do_something, ...)
+```
+
+Or a single `contracts/` directory:
+
+```
+examples/bank_transfer/
+    contracts/
+        transfer.py
+        audit.py
+        reporting.py
+```
+
+Tests and runners discover contracts by importing the module and reading
+module-level `Contract` instances.
+
+### Contract predicates
+
+Predicates are regular Python callables (lambdas or named functions) with
+canonical signatures.  Implication is expressed via ``implies()``:
+``implies(isinstance(result, TransferReceipt), ...)`` ≡ ``receipt → balance
+changed``.  See the *Contract Language Specification* for the full type
+system.
 
 ### Persistent state is not ghost state
 
@@ -379,32 +449,54 @@ The runner is generic.  Domain-specific code supplies:
 - ghost initialization;
 - implementation adaptation.
 
-### Specification tests
+### Specification tests — two approaches
 
-One parametrised test per Examples row:
+**Via pytest-bdd** (reads `.feature` files, matches Gherkin steps to
+Python step definitions):
+
+```python
+# tests/test_pytest_bdd.py
+from pytest_bdd import given, parsers, scenarios, then, when
+
+scenarios("examples/bank_transfer/transfer.feature")
+
+@when(parsers.re(r'funds of (?P<amount>\S+) are transferred ...'))
+def when_transfer(amount, source, target, ctx):
+    row = build_witness(...)
+    ctx["context"] = materializer.materialize(row)
+    ...
+    result = contract.invoke(svc, ctx["context"].db_path, ctx["args"])
+```
+
+No hand-written assertions beyond the Then steps — the contract's
+predicates are exercised by the step definitions.  The Gherkin
+feature file drives both the BDD runner and the contract verifier.
+
+**Via the specsaver CLI** (one-command check):
+
+```bash
+uv run specsaver trace examples.bank_transfer.contracts --verify
+uv run specsaver trace examples.bank_transfer.contracts --pre-only
+```
+
+`--verify` runs every Examples row through the full symmetric pipeline
+(materialise → snapshot → check admissibility → execute → snapshot →
+check transitions).  `--pre-only` checks only admissibility + invariants,
+requiring no implementation.
+
+**Via generic pytest** (advanced, when custom assertions are needed):
 
 ```python
 @pytest.mark.parametrize("row", all_rows(), ids=row_id)
 def test_scenario(row):
-    witness = build_witness(row)
-    contract = OperationContract.from_feature(FEATURE_PATH, "Transfer funds")
-    run_scenario(contract, witness, impl_adapter)
+    runner = TransferScenarioRunner()
+    passed, message = runner.run(row)
+    assert passed, f"Scenario failed: {message}"
 ```
 
-No hand-written assertions.  Adding a row to the feature file adds a
-test.  Adding a contract adds a check to every row.
-
-### Other consumers
-
-The same contracts + projection serve:
-- **Implementation tests** — run against the real SQLite-backed impl.
-- **Trace tests** — verify properties of the recorded execution trace
-  (no partial commit, no write after rollback, exactly one
-  idempotency record).
-- **Runtime monitors** — execute contract predicates as instrumentation
-  in production.
-- **Formal verification** — generate VCs from the same contract +
-  projection, discharge via SMT.
+The `TransferScenarioRunner` bundles all domain wiring (witness builder,
+materializer, projection, impl adapter) into one object exported from
+the domain package.  Both the CLI and pytest consume it.
 
 ---
 
@@ -477,26 +569,101 @@ violates a caller obligation (malformed input).
 
 ### Step 1: Write the Gherkin
 
-Create `examples/<domain>/<domain>.feature` with Rules, Scenario
-Outline, and Examples tables (with `outcome` column).
+Create `examples/<domain>/transfer.feature` with Rules (for invariants),
+Scenario Outlines, and Examples tables (with `outcome` column).
 
-### Step 2: Write the contracts
+### Step 2: Write the contract
 
-Create `examples/<domain>/contracts.py`:
-1. Define `SpecState` with provenance decomposition (observed,
-   derived, environment, history, ghost).
-2. Define `Args(Args)`, `Result` variants (success + error).
-3. Write admissibility (`@requires`), operation cases (`@case`),
-   transitions (`@ensures`), invariants (`@invariant`), frame
-   conditions (`@writes`/`@reads`), effects (`@effect`).
-4. Each with `from_gherkin` matching the Gherkin step text exactly.
+Create `examples/<domain>/contract.py`:
+
+```python
+from specsaver.contract_model import Contract
+
+transfer_contract = Contract(
+    existing_service.transfer,     # existing function — not modified
+    args_type=TransferArgs,        # explicit frozen dataclass
+    feature="transfer.feature",
+    when='funds of <amount> are transferred ...',
+    observe=TransferProjection().snapshot,
+    requires=[
+        lambda state, args: args.amount > 0,
+        lambda state, args: args.source_id in state.observed.accounts,
+    ],
+    ensures=[
+        lambda old_s, args, result, new_s: (
+            old_s.derived.total_balance == new_s.derived.total_balance
+        ),
+        lambda old_s, args, result, new_s: implies(
+            isinstance(result, TransferReceipt),
+            new_s.observed.accounts[args.source_id].balance
+            == old_s.observed.accounts[args.source_id].balance - args.amount,
+        ),
+    ],
+    exceptions={
+        InsufficientFundsError: lambda state, args: (
+            state.observed.accounts[args.source_id].balance < args.amount
+        ),
+    },
+    invariants=[
+        lambda state: all(a.balance >= 0 for a in state.observed.accounts.values()),
+    ],
+    ghost_state=Ghost, ghost_init=lambda w: Ghost(...), ...
+    writes={"source.balance", "target.balance", "audit_log"},
+    emits={"audit.transfer_completed", "notification.funds_received"},
+)
+```
+
+Or use the decorator style on a new implementation class:
+
+```python
+@contract(args_type=TransferArgs, feature="transfer.feature", ...)
+class TransferService:
+    def transfer(self, db_path, source_id, target_id, amount):
+        ...
+```
 
 ### Step 3: Write the implementation
 
-Create `examples/<domain>/service.py`:
-- Operates on `ExecutionContext` (database, environment, trace).
-- Returns `Result` (success or error variant).
-- Does NOT check admissibility — the contract system does that.
+Create `examples/<domain>/service.py`.  The implementation is **never
+imported by contracts** — contracts reference the function, not the
+other way around.
+
+### Step 4: Write the projection bridge
+
+Create `examples/<domain>/projection.py`:
+- `build_witness(row)` — Gherkin columns → ScenarioWitness + Args.
+- `TransferMaterializer` — witness → temp SQLite DB.
+- `TransferProjection` — DB connection → `SpecState` (the `observe` function).
+- `TransferScenarioRunner` — bundles witness, materializer, projection, impl.
+  Exported once; consumed by both CLI and tests.
+
+### Step 5: Write BDD step definitions
+
+Create `tests/test_pytest_bdd.py`:
+
+```python
+from pytest_bdd import given, parsers, scenarios, when, then
+
+scenarios("examples/<domain>/transfer.feature")
+
+@when(parsers.re(r'funds of (?P<amount>\S+) are transferred ...'))
+def when_transfer(amount, source, target, ctx):
+    row = build_witness(...)
+    context = materializer.materialize(row)
+    result = contract.invoke(svc, context.db_path, ctx["args"])
+    ...
+```
+
+### Step 6: Run
+
+```bash
+uv run pytest tests/test_pytest_bdd.py -v     # BDD — reads .feature directly
+uv run specsaver trace examples.<domain>.contracts --verify  # CLI
+```
+
+Every Examples row is now a test case.  Adding a row to the feature file
+adds a test.  Adding a contract adds a check to every row.  No test code
+changes needed beyond the step definitions (written once per domain).
 
 ### Step 4: Write the projection bridge
 
@@ -541,9 +708,10 @@ uv run pytest tests/test_<domain>.py -v
 | `impl_adapter` | Bridges impl signature to `ImplementationAdapter`. |
 | `fault_injector` | Domain-specific fault simulation. |
 
-Everything else — Gherkin parser, contract registry, scenario
-assembler, scenario runner, assertion logic, outcome dispatch,
-validation laws — is generic and lives in `src/specsaver/`.
+Everything else — Gherkin parser, ``Contract`` model, CLI commands
+(``trace``, ``render``, ``check``, ``list-contracts``), BDD step
+definition framework, validation laws — is generic and lives in
+``src/specsaver/``.
 
 ---
 

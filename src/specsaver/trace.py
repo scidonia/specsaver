@@ -17,7 +17,14 @@ from gherkin.parser import Parser as _GherkinParser
 from rich.console import Console
 
 from specsaver.registry import ContractRecord, get_registry
-from specsaver.render import render_entry_point
+from specsaver.render import render_contract_from_object, render_entry_point
+
+
+def _render_contract_for_feature(feat: str, feature_to_contract: dict) -> str:
+    """Render the contract for a feature — prefer Contract objects."""
+    if feat in feature_to_contract:
+        return render_contract_from_object(feature_to_contract[feat])
+    return render_entry_point(feat)
 
 # ---------------------------------------------------------------------------
 # Console capture (avoids double-output in headless contexts)
@@ -280,6 +287,7 @@ def _discover_verify_runners() -> dict[str, Callable]:
 def trace_contract(
     filter_pattern: str | None = None,
     *,
+    contracts: list | None = None,
     verify: bool = False,
     pre_only: bool = False,
 ) -> str:
@@ -288,18 +296,33 @@ def trace_contract(
     When verify=True, runs each Examples row through the symmetric
     runner.  When pre_only=True (implies verify=True), only checks
     admissibility + invariants — no implementation needed.
+
+    When ``contracts`` is provided (a list of ``Contract`` objects),
+    those are used directly instead of the flat registry.
     """
     from rich.markup import escape
     from rich.panel import Panel
     from rich.text import Text
 
+    from specsaver.contract_model import Contract
+
     if pre_only:
         verify = True
 
-    feature_to_step_texts: dict[str, set[str]] = defaultdict(set)
-    for r in get_registry().list_all():
-        if r.feature and r.from_gherkin:
-            feature_to_step_texts[r.feature].add(r.from_gherkin)
+    if contracts:
+        feature_to_contract: dict[str, Contract] = {
+            c.feature: c for c in contracts
+        }
+        feature_to_step_texts: dict[str, set[str]] = defaultdict(set)
+        for c in contracts:
+            if c.feature and c.when:
+                feature_to_step_texts[c.feature].add(c.when)
+    else:
+        feature_to_step_texts = defaultdict(set)
+        for r in get_registry().list_all():
+            if r.feature and r.from_gherkin:
+                feature_to_step_texts[r.feature].add(r.from_gherkin)
+        feature_to_contract = {}
 
     outlines = _all_outlines()
     pattern = (
@@ -346,7 +369,9 @@ def trace_contract(
                     )
                 io.print(
                     Panel(
-                        Text.from_markup(render_entry_point(feat)),
+                        Text.from_markup(
+                            _render_contract_for_feature(feat, feature_to_contract)
+                        ),
                         title=Text(f"Contract: [{feat}]", style="bold yellow"),
                     )
                 )

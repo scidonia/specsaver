@@ -37,6 +37,7 @@ specsaver = "specsaver.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+bdd_features_base_dir = "."
 
 [tool.ruff]
 target-version = "py312"
@@ -45,3 +46,9 @@ extend-exclude = ["*.feature", ".#*"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4"]
 ignore = ["UP047"]
+
+[dependency-groups]
+dev = [
+    "behave>=1.3.3",
+    "pytest-bdd>=7.3.0",
+]
