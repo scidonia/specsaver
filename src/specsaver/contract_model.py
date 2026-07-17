@@ -1,0 +1,244 @@
+"""Contract model — describe any existing function's specification.
+
+Contracts are external to the implementation.  Point at an existing
+function and describe its preconditions, postconditions, exceptions,
+invariants, frame conditions, effects, and ghost state — without
+modifying the function or its class.
+
+The Args type is declared explicitly as a frozen dataclass.  The
+``invoke`` method auto-marshals Args fields to the impl's parameter
+names, handling positional, keyword, and default values automatically.
+The domain adapter never needs to manually unpack.
+
+Usage (standalone):
+
+    from examples.bank_transfer.service import TransferService
+
+    transfer_contract = Contract(
+        TransferService.transfer,
+        args_type=TransferArgs,
+        feature="transfer.feature",
+        when='funds of <amount> are transferred ...',
+        observe=..., requires=[...], ensures=[...], ...
+    )
+    # Auto-marshal: env → first positional, Args fields → by name
+    result = transfer_contract.invoke(instance, env, args)
+
+Usage (decorator — attaches to class, auto-discovers impl method):
+
+    @contract(args_type=TransferArgs, feature="transfer.feature", ...)
+    class TransferService:
+        def transfer(self, db_path, source_id, target_id, amount):
+            ...
+"""
+
+from __future__ import annotations
+
+import inspect
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
+from typing import Any, TypeVar
+
+T = TypeVar("T")
+
+Predicate = Callable[..., bool]
+GhostInit = Callable[..., Any]
+Derivation = Callable[..., Any]
+
+
+@dataclass
+class ExcExit:
+    """A named exceptional exit from the implementation.
+
+    ``raises`` is the exception type thrown by this exit.
+    ``when`` predicates describe the pre-state condition that triggers the exit.
+    ``ensures`` predicates describe post-conditions on the exception instance
+    and post-state after the exit fires.
+    Signature: (state, args) for when, (state, args, exc, after_state) for ensures.
+    """
+
+    raises: type[BaseException]
+    when: list[Predicate] = field(default_factory=list)
+    ensures: list[Predicate] = field(default_factory=list)
+
+
+def _register_in_registry(contract: Contract) -> None:
+    """Register Contract predicates in the old flat registry so that
+    render/trace/verify CLI commands work with the new model."""
+    from specsaver.registry import get_registry
+    from specsaver.types import ContractKind
+
+    feature = contract.feature
+    when = contract.when
+    qualname = contract.impl.__qualname__
+    module = contract.impl.__module__ or "__unknown__"
+    contract_id = str(id(contract))
+
+    def _reg(kind, fn, suffix):
+        reg_id = f"{module}.{kind.name.lower()}.{qualname}.{contract_id}.{suffix}"
+        fn._specsaver_kind = kind
+        fn._specsaver_module = module
+        fn._specsaver_qualname = fn.__qualname__
+        fn._specsaver_from_gherkin = when
+        fn._specsaver_feature = feature
+        fn._specsaver_entry_point = None
+        get_registry().register(
+            identifier=reg_id,
+            kind=kind,
+            func=fn,
+            module=module,
+            qualname=fn.__qualname__,
+            from_gherkin=when,
+            feature=feature,
+        )
+
+    for i, fn in enumerate(contract.requires):
+        _reg(ContractKind.PRECONDITION, fn, f"req.{i}")
+    for i, fn in enumerate(contract.ensures):
+        _reg(ContractKind.POSTCONDITION, fn, f"ens.{i}")
+    for i, fn in enumerate(contract.invariants):
+        _reg(ContractKind.INVARIANT, fn, f"inv.{i}")
+    for j, exit_ in enumerate(contract.exceptions):
+        code = getattr(exit_.raises, "code", exit_.raises.__name__)
+        for k, fn in enumerate(exit_.when):
+            fn._specsaver_exc_type = code
+            _reg(ContractKind.EXCEPTIONAL, fn, f"exc.{j}.when.{k}")
+        for k, fn in enumerate(exit_.ensures):
+            fn._specsaver_exc_type = code
+            _reg(ContractKind.EXCEPTIONAL, fn, f"exc.{j}.ens.{k}")
+
+
+class Context[T]:
+    """Marks a parameter as the execution world — not part of contract Args.
+
+    Use as a type annotation on the first non-self parameter of an
+    implementation method to signal that it's environment/context,
+    not a contract argument.  The ``derive_args`` helper skips
+    ``Context``-wrapped parameters automatically.
+
+        class TransferService:
+            def transfer(self, db: Context[sqlite3.Connection],
+                         source_id: str, target_id: str, amount: int):
+                ...
+
+    This is purely a type-level marker — at runtime it passes through
+    whatever value the caller provides.
+    """
+    def __init__(self, value: T) -> None:
+        self.value = value
+
+
+@dataclass
+class Contract:
+    """A complete specification for an existing implementation function.
+
+    Create one at module level — it can be discovered by the runner
+    via module scanning or explicit registration.
+    """
+    impl: Callable
+    args_type: type
+    feature: str
+    when: str = ""
+    observe: Callable | None = None   # (db_connection) → ObservedState
+    requires: list[Predicate] = field(default_factory=list)
+    ensures: list[Predicate] = field(default_factory=list)
+    exceptions: list[ExcExit] = field(default_factory=list)
+    invariants: list[Predicate] = field(default_factory=list)
+    ghost_state: type | None = None
+    ghost_init: GhostInit | None = None
+    ghost_transitions: list[Predicate] = field(default_factory=list)
+    ghost_invariants: list[Predicate] = field(default_factory=list)
+    derives: dict[str, Derivation] = field(default_factory=dict)
+    writes: set[str] = field(default_factory=set)
+    reads: set[str] = field(default_factory=set)
+    uses: set[str] = field(default_factory=set)
+    emits: dict[str, set[type]] = field(default_factory=dict)
+
+    def __post_init__(self):
+        for attr in (
+            self.requires, self.ensures, self.ghost_transitions,
+            self.ghost_invariants, self.invariants,
+        ):
+            for i, p in enumerate(attr):
+                if not callable(p):
+                    raise TypeError(f"Predicate {i} must be callable")
+        # Register in the old flat registry so render/trace/verify work
+        _register_in_registry(self)
+
+    def invoke(self, instance: Any, env: Any, args: Any) -> Any:
+        """Call the implementation with env + args, matching by name.
+
+        ``args`` is an instance of ``self.args_type`` (a frozen dataclass).
+        Its fields are unpacked into the impl's parameter names, handling
+        positional, keyword-only, and defaults automatically.  ``env`` is
+        passed as the first positional argument after ``self``.
+        """
+        params = list(inspect.signature(self.impl).parameters.values())
+        # params[0] = self, params[1] = env, params[2:] = business params
+        kwargs: dict[str, Any] = dict(asdict(args))
+        positional: list[Any] = [instance, env]
+        for p in params[2:]:
+            if p.kind == inspect.Parameter.VAR_POSITIONAL:
+                raise TypeError("VAR_POSITIONAL (*args) not supported")
+            if p.kind == inspect.Parameter.VAR_KEYWORD:
+                positional.extend(kwargs.values())
+                kwargs.clear()
+                continue
+            default = p.default
+            value = kwargs.pop(p.name, default)
+            if value is inspect.Parameter.empty:
+                raise TypeError(
+                    f"impl requires {p.name!r} but Args has no field for it"
+                )
+            positional.append(value)
+        return self.impl(*positional, **kwargs)
+
+
+def contract(
+    *,
+    args_type: type,
+    feature: str,
+    when: str = "",
+    observe: Callable | None = None,
+    requires: list[Predicate] | None = None,
+    ensures: list[Predicate] | None = None,
+    exceptions: list[ExcExit] | None = None,
+    invariants: list[Predicate] | None = None,
+    ghost_state: type | None = None,
+    ghost_init: GhostInit | None = None,
+    ghost_transitions: list[Predicate] | None = None,
+    ghost_invariants: list[Predicate] | None = None,
+    writes: set[str] | None = None,
+    reads: set[str] | None = None,
+    uses: set[str] | None = None,
+    emits: dict[str, set[type]] | None = None,
+):
+    """Attach a Contract to a class.  The impl method is auto-discovered."""
+    def decorator(cls):
+        methods = [
+            m for m in inspect.getmembers(cls, inspect.isfunction)
+            if not m[0].startswith("_")
+        ]
+        impl = methods[0][1] if methods else (cls if callable(cls) else None)
+        cls.__specsaver_contract__ = Contract(
+            impl=impl,
+            args_type=args_type,
+            feature=feature,
+            when=when,
+            observe=observe,
+            requires=requires or [],
+            ensures=ensures or [],
+            exceptions=exceptions or {},
+            invariants=invariants or [],
+            ghost_state=ghost_state,
+            ghost_init=ghost_init,
+            ghost_transitions=ghost_transitions or [],
+            ghost_invariants=ghost_invariants or [],
+            writes=writes or set(),
+            reads=reads or set(),
+            uses=uses or set(),
+            emits=emits or set(),
+        )
+        return cls
+
+    return decorator
