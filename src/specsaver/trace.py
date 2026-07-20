@@ -265,7 +265,7 @@ def _discover_verify_runners() -> dict[str, Callable]:
     for r in get_registry().list_all():
         candidates = [r.module]
         # Also check parent package (e.g. examples.bank_transfer
-        # when contracts are in examples.bank_transfer.contracts)
+        # when contracts live in a submodule of the domain package)
         parts = r.module.rsplit(".", 1)
         if len(parts) == 2:
             candidates.append(parts[0])

@@ -230,3 +230,60 @@ def test_quantifier_with_exists():
     result = render_precondition("ex", mode="math")
     assert "∃" in result
     assert "x" in result and ">[/]" in result and "0" in result
+
+
+# ---------------------------------------------------------------------------
+# extends_by_one rendering
+# ---------------------------------------------------------------------------
+
+
+def test_extends_by_one_math_renders_existential_append():
+    from specsaver.render import _render_normalized
+
+    src = (
+        "extends_by_one(old_s.observed.log, new_s.observed.log, "
+        "lambda e: e.x == args.x)"
+    )
+    out = _render_normalized(src, ("old_s", "args", "result", "new_s"), "math")
+    assert "extends_by_one" not in out
+    assert "lambda" not in out
+    assert "∃[/] e." in out
+    assert "++" in out
+    assert "old(state)" in out
+
+
+def test_extends_by_one_math_inside_implies():
+    from specsaver.render import _render_normalized
+
+    src = (
+        "implies(args.flag, "
+        "extends_by_one(old_s.observed.log, new_s.observed.log, "
+        "lambda e: e.x == args.x))"
+    )
+    out = _render_normalized(src, ("old_s", "args", "result", "new_s"), "math")
+    assert "⇒" in out
+    assert "∃[/] e." in out
+
+
+def test_extends_by_one_python_mode():
+    from specsaver.render import _render_normalized
+
+    src = (
+        "extends_by_one(old_s.observed.log, new_s.observed.log, "
+        "lambda e: e.x == args.x)"
+    )
+    out = _render_normalized(
+        src, ("old_s", "args", "result", "new_s"), "python"
+    )
+    assert "extends_by_one" not in out
+    assert "+" in out and "[e]" in out
+    assert "and" in out
+
+
+def test_extends_by_one_named_predicate_fallback():
+    from specsaver.render import _render_normalized
+
+    src = "extends_by_one(old_s.observed.log, new_s.observed.log, _pred)"
+    out = _render_normalized(src, ("old_s", "args", "result", "new_s"), "math")
+    assert "∃[/] e." in out
+    assert "_pred(e)" in out

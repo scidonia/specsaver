@@ -4,8 +4,13 @@ This file describes the existing TransferService.transfer function
 without modifying it.  The Contract object is standalone — no decorator
 on the implementation class.
 
-Compare with contracts.py which uses the older @precondition/@postcondition
-decorator-based approach, and with service.py which uses @contract.
+The frame condition is *semantic*: the runner checks that everything
+outside ``writes`` is unchanged and that derived fields agree with
+``derives``.  Only the essential spec remains — deltas and event
+content.  Total-balance conservation follows from the two deltas plus
+derived consistency; balance legality is the invariant checked on the
+post-state; error-path state preservation is generated from the exits'
+empty frames.
 """
 
 from examples.bank_transfer.projection import TransferProjection
@@ -17,6 +22,7 @@ from examples.bank_transfer.types import (
     TransferGhost,
 )
 from specsaver.contract_model import Contract, ExcExit, StateField
+from specsaver.logic import extends_by_one
 
 _transfer_projection = TransferProjection()
 
@@ -33,9 +39,7 @@ transfer_contract = Contract(
         lambda state, args: args.target_id in state.observed.accounts,
     ],
     ensures=[
-        lambda old_s, args, result, new_s: (
-            old_s.derived.total_balance == new_s.derived.total_balance
-        ),
+        # --- the deltas -----------------------------------------------
         lambda old_s, args, result, new_s: (
             new_s.observed.accounts[args.source_id].balance
             == old_s.observed.accounts[args.source_id].balance - args.amount
@@ -44,20 +48,14 @@ transfer_contract = Contract(
             new_s.observed.accounts[args.target_id].balance
             == old_s.observed.accounts[args.target_id].balance + args.amount
         ),
-        lambda old_s, args, result, new_s: (
-            all(a.balance >= 0 for a in new_s.observed.accounts.values())
+        # --- events: exact extension, exact fields --------------------
+        lambda old_s, args, result, new_s: extends_by_one(
+            old_s.observed.audit_log, new_s.observed.audit_log,
+            lambda e: e.transaction_id == result.transaction_id,
         ),
-        lambda old_s, args, result, new_s: (
-            len(new_s.observed.audit_log)
-            == len(old_s.observed.audit_log) + 1
-            and new_s.observed.audit_log[-1].transaction_id
-            == result.transaction_id
-        ),
-        lambda old_s, args, result, new_s: (
-            len(new_s.observed.notif_log)
-            == len(old_s.observed.notif_log) + 1
-            and new_s.observed.notif_log[-1].amount
-            == args.amount
+        lambda old_s, args, result, new_s: extends_by_one(
+            old_s.observed.notif_log, new_s.observed.notif_log,
+            lambda e: e.amount == args.amount,
         ),
     ],
     exceptions=[
@@ -74,14 +72,7 @@ transfer_contract = Contract(
                 ),
             ],
             ensures=[
-                lambda state, args, exc, after_s: (
-                    after_s.observed.accounts[args.source_id].balance
-                    == state.observed.accounts[args.source_id].balance
-                ),
-                lambda state, args, exc, after_s: (
-                    after_s.observed.accounts[args.target_id].balance
-                    == state.observed.accounts[args.target_id].balance
-                ),
+                # --- exception payload matches the call ---------------
                 lambda state, args, exc, after_s: (
                     exc.source_id == args.source_id
                 ),
@@ -99,14 +90,7 @@ transfer_contract = Contract(
                 ),
             ],
             ensures=[
-                lambda state, args, exc, after_s: (
-                    after_s.observed.accounts[args.source_id].balance
-                    == state.observed.accounts[args.source_id].balance
-                ),
-                lambda state, args, exc, after_s: (
-                    after_s.observed.accounts[args.target_id].balance
-                    == state.observed.accounts[args.target_id].balance
-                ),
+                # --- exception payload matches the call ---------------
                 lambda state, args, exc, after_s: (
                     exc.source_id == args.source_id
                 ),
@@ -127,6 +111,9 @@ transfer_contract = Contract(
     state_schema={
         "accounts": StateField(
             type_hint="Mapping[str, Account]", provenance="observed",
+        ),
+        "limits": StateField(
+            type_hint="TransferLimits | None", provenance="observed",
         ),
         "audit_log": StateField(
             type_hint="tuple[TransferCompleted, ...]", provenance="observed",

@@ -33,6 +33,7 @@ from examples.bank_transfer.types import (
     TransferObserved,
     TransferSpecState,
 )
+from specsaver.scenario_runner import ScenarioRunner
 
 # ---------------------------------------------------------------------------
 # ExecutionContext — the concrete execution world
@@ -260,6 +261,9 @@ class _FaultableTransferService:
 
         self._inner = inner or TransferService()
 
+    def inject_fault(self, fault_name: str) -> None:
+        _fault_state.inject(fault_name)
+
     def execute(self, context, args):
         fault = _fault_state.consume()
         if fault == "simulated_fault":
@@ -291,118 +295,22 @@ class _FaultableTransferService:
 _fault_state = _FaultState()
 
 
-class TransferScenarioRunner:
-    """Bundles the domain wiring needed to run a scenario.
+class TransferScenarioRunner(ScenarioRunner):
+    """Bundles the bank transfer wiring needed to run a scenario.
 
-    Uses the new Contract model — all predicates are in one place,
-    with no dependency on SpecScenario or the registry.
+    Thin domain wrapper over the generic specsaver ScenarioRunner:
+    supplies the transfer contract, materializer, projection, impl
+    wrapper, witness builder, and cleanup.
     """
 
     def __init__(self) -> None:
         from examples.bank_transfer.contract import transfer_contract
 
-        self._contract = transfer_contract
-        self._materializer = TransferMaterializer()
-        self._projection = TransferProjection()
-        self._impl = _FaultableTransferService()
-        self._fault_state = _fault_state
-
-    def _run_impl(self, context, args, outcome, fault_name, before):
-        if fault_name:
-            self._fault_state.inject(fault_name)
-        if outcome and outcome.startswith("error:"):
-            expected = outcome.split(":", 1)[1]
-        else:
-            expected = None
-        try:
-            return self._impl.execute(context, args), None
-        except Exception as exc:
-            exc_name = type(exc).__name__
-            matching = [
-                e for e in self._contract.exceptions
-                if isinstance(exc, e.raises)
-            ]
-            if matching:
-                after = self._projection.snapshot(context)
-                for exit_ in matching:
-                    if not all(p(before, args) for p in exit_.when):
-                        continue
-                    for p in exit_.ensures:
-                        if not p(before, args, exc, after):
-                            raise RuntimeError(
-                                "exception ensures violated"
-                            ) from exc
-                    break
-                else:
-                    raise RuntimeError(
-                        f"exception {exc_name} has no matching when"
-                    ) from exc
-            if expected and exc_name != expected:
-                raise
-            return exc, exc_name
-
-    def run(self, row: dict[str, str]) -> tuple[bool, str]:
-        witness = build_witness(row)
-        context = self._materializer.materialize(witness)
-        outcome = row.get("outcome", "")
-        fault_name = row.get("fault")
-        args = witness.args
-        try:
-            projection = TransferProjection()
-            before = projection.snapshot(context)
-            for inv in self._contract.invariants:
-                if not inv(before):
-                    return False, f"invariant failed: {inv}"
-            pre_passed = all(p(before, args) for p in self._contract.requires)
-            if outcome == "rejected":
-                if pre_passed:
-                    return False, "expected rejection but admissibility held"
-                return True, "REJECTED"
-            if not pre_passed:
-                return False, "admissibility failed"
-            if outcome == "success":
-                result, _ = self._run_impl(context, args, outcome, fault_name, before)
-                after = projection.snapshot(context)
-                for ens in self._contract.ensures:
-                    if not ens(before, args, result, after):
-                        return False, "postcondition failed"
-                for inv in self._contract.invariants:
-                    if not inv(after):
-                        return False, "invariant failed after"
-                return True, "PASS"
-            result, code = self._run_impl(context, args, outcome, fault_name, before)
-            if outcome.startswith("error:") and code != outcome.split(":", 1)[1]:
-                return False, f"expected {outcome} but got code {code}"
-            after = projection.snapshot(context)
-            # On error paths, postconditions don't apply — exceptions handle that.
-            if outcome == "success":
-                for ens in self._contract.ensures:
-                    if not ens(before, args, result, after):
-                        return False, "postcondition failed"
-            for inv in self._contract.invariants:
-                if not inv(after):
-                    return False, "invariant failed after"
-            return True, "PASS"
-        except Exception as exc:
-            return False, str(exc)
-        finally:
-            cleanup(context)
-
-    def check_pre(self, row: dict[str, str]) -> tuple[bool, str]:
-        witness = build_witness(row)
-        projection = TransferProjection()
-        context = self._materializer.materialize(witness)
-        try:
-            before = projection.snapshot(context)
-            args = witness.args
-            pre_passed = all(
-                p(before, args) for p in self._contract.requires
-            )
-            outcome = row.get("outcome", "")
-            if outcome == "rejected":
-                msg = "REJECTED" if not pre_passed else "FAIL: admissibility held"
-                return (not pre_passed, msg)
-            msg = "PASS" if pre_passed else "FAIL: admissibility failed"
-            return (pre_passed, msg)
-        finally:
-            cleanup(context)
+        super().__init__(
+            transfer_contract,
+            materializer=TransferMaterializer(),
+            projection=TransferProjection(),
+            impl=_FaultableTransferService(),
+            witness_builder=build_witness,
+            cleanup=cleanup,
+        )

@@ -375,9 +375,16 @@ def _render_exception_dict(exceptions: list, mode: str,
             f"{_T1}[bold green]raises:[/] exc: "
             f"[bold steel_blue3]{exc_type.__name__}[/]"
         )
+        if exit_.writes:
+            lines.append(f"{_T1}[bold green]modifies:[/]")
+            lines.append(f"{_T2}[bold green]writes:[/]")
+            for f in sorted(exit_.writes):
+                lines.append(f"{_T3}{f.replace("[", r"\[")}")
+        else:
+            lines.append(f"{_T1}[bold green]modifies:[/] [#FFBF00]∅[/]")
         lines.append(
             f"{_T1}[bold green]ensures:[/] "
-            f"[#FFBF00]∃[/] exc, state."
+            f"[#FFBF00]∃[/] state."
         )
         if exit_.ensures:
             pred_parts: list[str] = []
@@ -580,6 +587,25 @@ class _BaseRenderer(ast.NodeVisitor):
         return isinstance(node.func, ast.Name) and node.func.id == "all"
 
     @staticmethod
+    def _is_extends_call(node: ast.Call) -> bool:
+        return isinstance(node.func, ast.Name) and node.func.id == "extends_by_one"
+
+    def _extends_parts(self, node: ast.Call) -> tuple[str, str, str, str]:
+        """Unpack extends_by_one(old, new, pred) → (old, new, param, body)."""
+        old_s = self.visit(node.args[0])
+        new_s = self.visit(node.args[1])
+        pred = node.args[2] if len(node.args) > 2 else None
+        if isinstance(pred, ast.Lambda) and pred.args.args:
+            param = pred.args.args[0].arg
+            body = self.visit(pred.body)
+        elif pred is not None:
+            param = "e"
+            body = f"{ast.unparse(pred)}({param})"
+        else:
+            param, body = "e", ""
+        return old_s, new_s, param, body
+
+    @staticmethod
     def _generator_arg(node: ast.Call) -> tuple:
         gen = node.args[0]
         assert isinstance(gen, ast.GeneratorExp)
@@ -645,6 +671,10 @@ class _PythonRenderer(_BaseRenderer):
             p = self.visit(node.args[0])
             q = self.visit(node.args[1])
             return f"({p} → {q})"
+        if self._is_extends_call(node):
+            old_s, new_s, param, body = self._extends_parts(node)
+            head = f"{new_s} == {old_s} + [{param}]"
+            return f"{head} and {body}" if body else head
         if self._is_old_call(node):
             return self._visit_old(node)
         return ast.unparse(node)
@@ -724,6 +754,13 @@ class _MathRenderer(_BaseRenderer):
             p = self.visit(node.args[0])
             q = self.visit(node.args[1])
             return f"({p} [#FFBF00]⇒[/] {q})"
+        if self._is_extends_call(node):
+            old_s, new_s, param, body = self._extends_parts(node)
+            head = (
+                f"[#FFBF00]∃[/] {param}. {new_s} [#FFBF00]=[/] "
+                f"{old_s} [#FFBF00]++[/] \\[{param}]"
+            )
+            return f"{head} [#FFBF00]∧[/] {body}" if body else head
         if self._is_old_call(node):
             return self._visit_old(node)
         return ast.unparse(node)
