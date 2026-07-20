@@ -17,7 +17,7 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "gherkin-official>=41.0.0",
+    "gherkin-official>=29.0.0",
     "rich>=13.0.0",
     "typer>=0.16.0",
 ]
