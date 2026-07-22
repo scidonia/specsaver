@@ -13,7 +13,6 @@ The interesting verification surface, beyond the inventory example:
 Stolen from paperchecker's invitations.feature.
 """
 
-from examples.invitations.projection import InvitationsProjection
 from examples.invitations.service import InvitationService
 from examples.invitations.types import (
     SEVEN_DAYS,
@@ -27,8 +26,6 @@ from examples.invitations.types import (
 )
 from specsaver.contract_model import Contract, ExcExit, StateField
 from specsaver.logic import extends_by_one
-
-_projection = InvitationsProjection()
 
 # ---------------------------------------------------------------------------
 # Shared domain properties
@@ -108,7 +105,6 @@ invite_contract = Contract(
     args_type=InviteArgs,
     feature="invite.feature",
     when='"<inviter>" invites "<invitee_email>" to "<org>" as "<role>"',
-    observe=_projection.snapshot,
     requires=[
         # Admissibility must hold for ALL outcomes, including the
         # NotAuthorizedError exit — so authorization itself lives in the
@@ -219,7 +215,6 @@ accept_contract = Contract(
     args_type=AcceptArgs,
     feature="accept.feature",
     when='"<user>" accepts invitation "<token>"',
-    observe=_projection.snapshot,
     requires=[
         # Holds for the success, EmailMismatch, and Expired rows alike:
         # every scenario starts from a pending invitation.  The exits

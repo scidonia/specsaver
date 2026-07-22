@@ -18,7 +18,6 @@ ghost machinery — belong to the state, not to any one operation.  They
 are factored as shared locals below (a future DomainSpec would own them).
 """
 
-from examples.inventory.projection import InventoryProjection
 from examples.inventory.service import InventoryService
 from examples.inventory.types import (
     InsufficientStockError,
@@ -30,8 +29,6 @@ from examples.inventory.types import (
 )
 from specsaver.contract_model import Contract, ExcExit, StateField
 from specsaver.logic import extends_by_one, implies
-
-_projection = InventoryProjection()
 
 
 def _available(state, sku: str) -> int:
@@ -136,7 +133,6 @@ reserve_contract = Contract(
     args_type=ReserveArgs,
     feature="reserve.feature",
     when='stock of <quantity> is reserved for order "<order>" on "<sku>"',
-    observe=_projection.snapshot,
     requires=[
         lambda state, args: args.quantity > 0,
         lambda state, args: args.sku in state.observed.products,
@@ -245,7 +241,6 @@ release_contract = Contract(
     args_type=ReleaseArgs,
     feature="release.feature",
     when='stock of <quantity> is released for order "<order>" on "<sku>"',
-    observe=_projection.snapshot,
     requires=[
         lambda state, args: args.quantity > 0,
         lambda state, args: args.sku in state.observed.products,
@@ -333,7 +328,6 @@ restock_contract = Contract(
     args_type=RestockArgs,
     feature="restock.feature",
     when='stock of <quantity> is received on "<sku>"',
-    observe=_projection.snapshot,
     requires=[
         lambda state, args: args.quantity > 0,
         lambda state, args: args.sku in state.observed.products,

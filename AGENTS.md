@@ -8,9 +8,10 @@ derived.
 
 - `src/specsaver/` — Python package: contract language implementation,
   frame checker, generic scenario runner, and library theories
-  (`specsaver.theory` — SQL database theory; logging/OTel to follow).
-  The theory ships a DBAPI shim (`make_engine`) so services written
-  against SQLAlchemy run unchanged on the stub engine.
+  (`specsaver.theory` — SQL, logging, and OpenTelemetry
+  theories). The theories ship adapters (`make_engine` for SQL,
+  `make_log_capture` for logging, `make_otel_capture` for OTel) so
+  services run unchanged on the stubs.
 - `src/specsaver/backend/` — proof machinery imported from axiomander:
   `contract_ir`, `contract_linter`, `contract_ir_iris`, `shape_ir`
   (keep upstream style for easy sync — lint is relaxed for these files).

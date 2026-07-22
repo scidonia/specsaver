@@ -13,7 +13,6 @@ post-state; error-path state preservation is generated from the exits'
 empty frames.
 """
 
-from examples.bank_transfer.projection import TransferProjection
 from examples.bank_transfer.service import TransferService
 from examples.bank_transfer.types import (
     CurrencyMismatchError,
@@ -24,14 +23,11 @@ from examples.bank_transfer.types import (
 from specsaver.contract_model import Contract, ExcExit, StateField
 from specsaver.logic import extends_by_one
 
-_transfer_projection = TransferProjection()
-
 transfer_contract = Contract(
     TransferService.transfer,
     args_type=TransferArgs,
     feature="transfer.feature",
     when='funds of <amount> are transferred from "<source>" to "<target>"',
-    observe=_transfer_projection.snapshot,
     requires=[
         lambda state, args: args.amount > 0,
         lambda state, args: args.source_id != args.target_id,

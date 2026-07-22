@@ -49,6 +49,35 @@ class ExitInfo:
 
 
 @dataclass(frozen=True)
+class TraceFieldInfo:
+    name: str      # e.g. "sku"
+    kind: str      # "args" | "result" | "exc" | "var" | "expr"
+    expr: str      # the variable / expression — e.g. "sku", "reservation_id"
+    field_type: str  # "int" | "str"
+
+
+@dataclass(frozen=True)
+class TraceInfo:
+    """One ``extends_by_one`` trace obligation."""
+    log_field: str       # e.g. "reservation_log"
+    event_fields: tuple[TraceFieldInfo, ...]
+
+
+def _field_type_for(name: str, info_fields: tuple[tuple[str, str], ...],
+                    qty_arg: str) -> str:
+    """Determine if an args field is int or str."""
+    for f, t in info_fields:
+        if f == name:
+            return t
+    if name == qty_arg:
+        return "int"
+    # Default: look at the arg names — quantity-like fields are int
+    if name in ("quantity", "amount", "now", "created_at", "expires_at"):
+        return "int"
+    return "str"
+
+
+@dataclass(frozen=True)
 class ContractInfo:
     name: str            # operation name ("reserve")
     row_fields: tuple[tuple[str, str], ...]  # (name, "int"|"str"), sans key field
@@ -59,6 +88,7 @@ class ContractInfo:
     non_neg: tuple[str, ...]              # fields constrained >= 0 (e.g. balance)
     exits: tuple[ExitInfo, ...]
     log_writes: tuple[str, ...]    # trace write paths deferred to trace emission (v2)
+    traces: tuple[TraceInfo, ...]   # extends_by_one obligations for trace cells
     avail: str | None  # success availability as a Coq Prop string; None if no exits
 
 
@@ -150,6 +180,120 @@ def _find_deltas(contract: Contract) -> tuple[DeltaInfo, ...]:
             f"deltas use different quantity args: {sorted(qty_args)}"
         )
     return tuple(matches)
+
+
+def _find_traces(contract: Contract, row_fields, qty_arg) -> tuple[TraceInfo, ...]:
+    """Find ``extends_by_one`` trace obligations in ensures (success path
+    only; exception-arm traces deferred to a later lowering pass)."""
+    results: list[TraceInfo] = []
+    for pred in contract.ensures:
+        try:
+            body = _body(pred)
+        except UnsupportedShapeError:
+            continue
+        _collect_trace(body, results, row_fields, qty_arg)
+    return tuple(
+        t for t in results
+        if t.event_fields and all(
+            f.kind in ("args", "var") for f in t.event_fields
+        )
+    )
+
+
+def _collect_trace(
+    body: ast.expr, results: list[TraceInfo],
+    row_fields, qty_arg,
+) -> None:
+    """Extract extends_by_one(old.observed.<X>, new.observed.<X>, λe: ...)."""
+    if not isinstance(body, ast.Call):
+        return
+    func = body.func
+    if (isinstance(func, ast.Name) and func.id == "extends_by_one"
+            and len(body.args) == 3):
+        args = body.args
+        # Extract log field from old.observed.<field> pattern
+        log = _extract_observed_field(args[0])
+        if log is None:
+            return
+        # Extract event fields from the lambda
+        pred_body = args[2]
+        if isinstance(pred_body, ast.Lambda):
+            raw_fields = _extract_event_fields(pred_body.body)
+            fields = _make_trace_fields(raw_fields, row_fields, qty_arg)
+            results.append(TraceInfo(
+                log_field=log,
+                event_fields=tuple(fields),
+            ))
+    if isinstance(body, ast.BoolOp) and isinstance(body.op, ast.And):
+        for v in body.values:
+            _collect_trace(v, results, row_fields, qty_arg)
+
+
+def _extract_observed_field(node: ast.expr) -> str | None:
+    """Extract the log field name from: old_s.observed.<field>."""
+    if not isinstance(node, ast.Attribute):
+        return None
+    sub = node.value
+    if not isinstance(sub, ast.Attribute):
+        return None
+    if not isinstance(sub.value, ast.Name):
+        return None
+    if sub.attr == "observed":
+        return node.attr
+    return None
+
+
+def _extract_event_fields(
+    body: ast.expr,
+) -> list[tuple[str, str, str]]:
+    """Extract (field_name, kind, value_expr) from lambda body."""
+    fields: list[tuple[str, str, str]] = []
+    children = body.values if (
+        isinstance(body, ast.BoolOp) and isinstance(body.op, ast.And)
+    ) else [body]
+    for child in children:
+        if not (isinstance(child, ast.Compare)
+                and len(child.ops) == 1
+                and isinstance(child.ops[0], ast.Eq)):
+            continue
+        left = child.left
+        right = child.comparators[0]
+        if not isinstance(left, ast.Attribute):
+            continue
+        if (isinstance(left.value, ast.Name)
+                and left.value.id in ("e", "g", "a", "f")):
+            field_name = left.attr
+            kind, expr = _source_kind(right)
+            fields.append((field_name, kind, expr))
+    return fields
+
+
+def _make_trace_fields(
+    raw: list[tuple[str, str, str]],
+    row_fields: tuple[tuple[str, str], ...],
+    qty_arg: str,
+) -> list[TraceFieldInfo]:
+    return [
+        TraceFieldInfo(
+            name=name, kind=kind, expr=expr,
+            field_type=_field_type_for(name, row_fields, qty_arg),
+        )
+        for name, kind, expr in raw
+    ]
+
+
+def _source_kind(node: ast.expr) -> tuple[str, str]:
+    """Determine where an event field value comes from."""
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        if node.value.id == "args":
+            return "args", node.attr
+        if node.value.id == "result":
+            return "result", node.attr
+        if node.value.id in ("exc",):
+            return "exc", node.attr
+    if isinstance(node, ast.Name):
+        return "var", node.id
+    return "expr", ast.unparse(node)
 
 
 def _parse_comparison(body: ast.expr, map_field: str) -> tuple[str, str, str]:
@@ -311,6 +455,7 @@ def introspect_contract(
     exits = tuple(_introspect_exit(e, map_field) for e in contract.exceptions)
     avail = _build_avail(exits)
     log_writes = _validate_frame(contract, map_field, deltas)
+    traces = _find_traces(contract, row_fields, deltas[0].qty_arg if deltas else "")
 
     name = getattr(contract.impl, "__name__", "op")
     return ContractInfo(
@@ -323,5 +468,6 @@ def introspect_contract(
         non_neg=tuple(dict.fromkeys(non_neg)),
         exits=exits,
         log_writes=log_writes,
+        traces=traces,
         avail=avail,
     )

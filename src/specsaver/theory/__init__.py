@@ -9,15 +9,34 @@ writes, and how results relate to inputs.  One registry, two consumers:
   - the **syntactic translator** (proof): lowers implementation code
     that calls the adorned library into theory terms.
 
-Currently adorning: SQL (``specsaver.theory.sql``).  Logging and
-OpenTelemetry theories follow the same shape.
+Currently adorning: SQL, logging, OpenTelemetry.
 """
 
-from specsaver.theory.sql import (
+from specsaver.theory.logtheory import (  # noqa: F401 — re-export
+    LOGTHEORY,
+    CallRule,
+    Emit,
+    LogCaptureError,
+    LogEmit,
+    LogStore,
+    LogStubHandler,
+    LogTheoryError,
+    make_log_capture,
+)
+from specsaver.theory.otel import (  # noqa: F401
+    OTELTHEORY,
+    OtelStore,
+    OtelStubProcessor,
+    OtelTheoryError,
+    SpanEnded,
+    SpanRecord,
+    SpanStarted,
+    make_otel_capture,
+)
+from specsaver.theory.sql import (  # noqa: F401
     SQLTHEORY,
     Begin,
     Commit,
-    Event,
     Execute,
     FetchAll,
     FetchOne,
@@ -40,9 +59,10 @@ from specsaver.theory.sql import (
 
 __all__ = [
     "SQLTHEORY",
+    "LOGTHEORY",
+    "OTELTHEORY",
     "Begin",
     "Commit",
-    "Event",
     "Execute",
     "FetchAll",
     "FetchOne",
@@ -61,4 +81,20 @@ __all__ = [
     "UnsupportedStatementError",
     "Update",
     "translate_sql",
+    # -- logging
+    "Emit",
+    "LogCaptureError",
+    "LogEmit",
+    "LogStore",
+    "LogStubHandler",
+    "LogTheoryError",
+    "make_log_capture",
+    # -- otel
+    "OtelStore",
+    "OtelStubProcessor",
+    "OtelTheoryError",
+    "SpanEnded",
+    "SpanRecord",
+    "SpanStarted",
+    "make_otel_capture",
 ]

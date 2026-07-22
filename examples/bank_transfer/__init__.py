@@ -2,13 +2,8 @@
 
 from pathlib import Path
 
-from examples.bank_transfer.projection import (
-    TransferExecutionContext,
-    TransferScenarioRunner,
-    TransferScenarioWitness,
-    build_witness,
-    cleanup,
-)
+from examples.bank_transfer.domain import transfer_domain as _domain
+from examples.bank_transfer.projection import build_witness
 from examples.bank_transfer.service import TransferService
 from examples.bank_transfer.types import (
     Account,
@@ -30,15 +25,10 @@ FEATURE = "transfer.feature"
 
 _FEATURE_PATH = str(Path(__file__).parent / "transfer.feature")
 
-# Single domain runner — consumed by both CLI (--verify) and pytest tests.
-transfer_runner = TransferScenarioRunner()
+_runners = _domain.runners()
+transfer_runner = _runners["transfer.feature"]
 
-
-def _verify_transfer(row, pre_only=False):
-    return transfer_runner.check_pre(row) if pre_only else transfer_runner.run(row)
-
-
-__verify_runner__ = {"transfer.feature": _verify_transfer}
+__verify_runner__ = _domain.verify_runner()
 
 __all__ = [
     "FEATURE",
@@ -55,11 +45,7 @@ __all__ = [
     "TransferDerived",
     "TransferGhost",
     "TransferSpecState",
-    "TransferExecutionContext",
-    "TransferScenarioWitness",
-    "TransferScenarioRunner",
     "TransferService",
     "transfer_runner",
     "build_witness",
-    "cleanup",
 ]

@@ -1,15 +1,10 @@
 """Invitations example — stolen from paperchecker, built on SQLAlchemy."""
 
 from examples.invitations.contract import accept_contract, invite_contract
+from examples.invitations.domain import invitations_domain as _domain
 from examples.invitations.projection import (
-    InvitationsExecutionContext,
-    InvitationsScenarioRunner,
-    InvitationsScenarioWitness,
-    _AcceptService,
-    _InviteService,
     build_accept_witness,
     build_invite_witness,
-    cleanup,
 )
 from examples.invitations.service import InvitationService
 from examples.invitations.types import (
@@ -33,26 +28,11 @@ from examples.invitations.types import (
 
 FEATURE = "invite.feature"
 
-invite_runner = InvitationsScenarioRunner(
-    invite_contract, _InviteService(), build_invite_witness,
-)
-accept_runner = InvitationsScenarioRunner(
-    accept_contract, _AcceptService(), build_accept_witness,
-)
+_runners = _domain.runners()
+invite_runner = _runners["invite.feature"]
+accept_runner = _runners["accept.feature"]
 
-
-def _verify_invite(row, pre_only=False):
-    return invite_runner.check_pre(row) if pre_only else invite_runner.run(row)
-
-
-def _verify_accept(row, pre_only=False):
-    return accept_runner.check_pre(row) if pre_only else accept_runner.run(row)
-
-
-__verify_runner__ = {
-    "invite.feature": _verify_invite,
-    "accept.feature": _verify_accept,
-}
+__verify_runner__ = _domain.verify_runner()
 
 __all__ = [
     "FEATURE",
@@ -65,11 +45,8 @@ __all__ = [
     "InvitationNotFoundError",
     "InvitationService",
     "InvitationsDerived",
-    "InvitationsExecutionContext",
     "InvitationsGhost",
     "InvitationsObserved",
-    "InvitationsScenarioRunner",
-    "InvitationsScenarioWitness",
     "InvitationsSpecState",
     "InviteArgs",
     "InviteReceipt",
@@ -80,7 +57,7 @@ __all__ = [
     "accept_runner",
     "build_accept_witness",
     "build_invite_witness",
-    "cleanup",
+
     "invite_contract",
     "invite_runner",
 ]
