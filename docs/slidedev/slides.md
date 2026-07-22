@@ -10,7 +10,7 @@ class: text-center
 drawings:
   persist: false
 transition: slide-left
-mdc: true
+mdc: false
 ---
 
 # Vericoding
@@ -47,8 +47,6 @@ The only durable artifact is the code itself.
 </div>
 
 ::right::
-
-<br><br><br>
 
 # Vericoding
 
@@ -122,8 +120,6 @@ The contract is the acceptance criteria.
 
 ::right::
 
-<br><br>
-
 ## Retrospective
 
 <div class="border-l-4 border-yellow-400 pl-4 text-sm mt-2">
@@ -162,8 +158,6 @@ Every clause is a boolean-valued lambda:
 loops, and non-boolean returns before execution.
 
 ::right::
-
-<br><br>
 
 ## Anatomised as mathematical record
 
@@ -476,7 +470,7 @@ $$
 $$
 \begin{aligned}
 \mathsf{post}_{\mathit{invite}}(s,a,r,s') =\;&
-s'.\mathit{invitations}[a.\mathit{token}].\mathit{status} = \text{``pending''} \\
+s'.\mathit{invitations}[a.\mathit{token}].\mathit{status} = \text{pending} \\
 \wedge\;& s'.\mathit{invitations}[a.\mathit{token}].\mathit{expires\_at}
        = a.\mathit{now} + 7\!\cdot\!86400
 \end{aligned}
@@ -489,7 +483,7 @@ $$
 $$
 \begin{aligned}
 \mathsf{post}_{\mathit{accept}}(s,a,r,s') =\;&
-s'.\mathit{invitations}[a.\mathit{token}].\mathit{status} = \text{``accepted''} \\
+s'.\mathit{invitations}[a.\mathit{token}].\mathit{status} = \text{accepted} \\
 \wedge\;& s'.\mathit{members}[a.\mathit{user\_id}].\mathit{org\_id}
        = s.\mathit{invitations}[a.\mathit{token}].\mathit{org\_id} \\
 \wedge\;& s'.\mathit{users}[a.\mathit{user\_id}].\mathit{default\_org}
@@ -514,12 +508,12 @@ layout: two-cols
 
 # Verified State
 
-|| Domain | Tables | Ops | Rows | Obligations |
+| Domain | Tables | Ops | Rows | Obligations |
 |---|--------|--------|-----|------|-------------|
-|| inventory | 1 | 3 | 22 | 6/6 · 6/6 · 4/4 |
-|| bank_transfer | 2 | 1 | 11 | 7/7 |
-|| invitations | 3 | 2 | 9 | runtime-only |
-|| **Total** | | **6** | **42** | **23 in 23** |
+| inventory | 1 | 3 | 22 | 6/6 · 6/6 · 4/4 |
+| bank_transfer | 2 | 1 | 11 | 7/7 |
+| invitations | 3 | 2 | 9 | runtime-only |
+| **Total** | | **6** | **42** | **23 in 23** |
 
 <br>
 
