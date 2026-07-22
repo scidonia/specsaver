@@ -78,6 +78,24 @@ def check_purity(func: Any) -> None:
         return
 
     func_def = tree.body[0]
+    # Lambda contract (the Contract-model style): the source may be a bare
+    # lambda, an assignment of one, or a tuple-wrapped one (trailing comma).
+    lam = next(
+        (n for n in ast.walk(tree) if isinstance(n, ast.Lambda)), None
+    )
+    if lam is not None:
+        visitor = _PurityVisitor(
+            getattr(func, "__qualname__", "<lambda>")
+        )
+        for arg in lam.args.args + lam.args.posonlyargs + lam.args.kwonlyargs:
+            visitor._local_names.add(arg.arg)
+        if lam.args.vararg:
+            visitor._local_names.add(lam.args.vararg.arg)
+        if lam.args.kwarg:
+            visitor._local_names.add(lam.args.kwarg.arg)
+        visitor.visit(lam.body)
+        return
+
     if not isinstance(func_def, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return
 

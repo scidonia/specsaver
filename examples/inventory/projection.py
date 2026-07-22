@@ -22,6 +22,8 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import Engine, create_engine, text
+
 from examples.inventory.events import (
     EventLog,
     LowStockAlert,
@@ -56,7 +58,7 @@ from specsaver.scenario_runner import ScenarioRunner
 class InventoryExecutionContext:
     """The concrete world the implementation operates on."""
 
-    db_path: str
+    engine: Engine
     events: EventLog = field(default_factory=EventLog)
     ghost: InventoryGhost = field(default_factory=InventoryGhost)
 
@@ -101,12 +103,14 @@ def _populate(conn: sqlite3.Connection, products: dict[str, Product]) -> None:
     conn.commit()
 
 
-def _read_product(db_path: str, sku: str) -> Product | None:
-    with sqlite3.connect(db_path) as conn:
+def _read_product(engine: Engine, sku: str) -> Product | None:
+    with engine.connect() as conn:
         row = conn.execute(
-            "SELECT sku, on_hand, reserved, reorder_point"
-            " FROM products WHERE sku = ?",
-            (sku,),
+            text(
+                "SELECT sku, on_hand, reserved, reorder_point"
+                " FROM products WHERE sku = :sku"
+            ),
+            {"sku": sku},
         ).fetchone()
     if row is None:
         return None
@@ -131,7 +135,7 @@ class InventoryMaterializer:
             conn.executescript(_SCHEMA)
             _populate(conn, witness.products)
         return InventoryExecutionContext(
-            db_path=path,
+            engine=create_engine(f"sqlite:///{path}"),
             events=EventLog(),
             ghost=witness.ghost,
         )
@@ -150,9 +154,10 @@ class InventoryProjection:
     """
 
     def snapshot(self, context: InventoryExecutionContext) -> InventorySpecState:
-        with sqlite3.connect(context.db_path) as conn:
+        with context.engine.connect() as conn:
             product_rows = conn.execute(
-                "SELECT sku, on_hand, reserved, reorder_point FROM products"
+                text("SELECT sku, on_hand, reserved, reorder_point"
+                     " FROM products")
             ).fetchall()
 
         products: dict[str, Product] = {
@@ -260,9 +265,11 @@ def build_restock_witness(row: dict[str, str]) -> InventoryScenarioWitness:
 
 
 def cleanup(context: InventoryExecutionContext) -> None:
-    """Remove the temp database after a test."""
-    if os.path.exists(context.db_path):
-        os.unlink(context.db_path)
+    """Dispose the engine and remove the temp database after a test."""
+    path = context.engine.url.database
+    context.engine.dispose()
+    if path and os.path.exists(path):
+        os.unlink(path)
 
 
 # ---------------------------------------------------------------------------
@@ -316,10 +323,10 @@ class _FaultableReserveService:
                 message="Simulated runtime fault",
             )
 
-        before = _read_product(context.db_path, args.sku)
+        before = _read_product(context.engine, args.sku)
         try:
             result = self._inner.reserve(
-                context.db_path, args.sku, args.order_id, args.quantity
+                context.engine, args.sku, args.order_id, args.quantity
             )
         except InsufficientStockError as exc:
             context.events.emit(
@@ -334,7 +341,7 @@ class _FaultableReserveService:
             )
             raise
 
-        after = _read_product(context.db_path, args.sku)
+        after = _read_product(context.engine, args.sku)
         assert after is not None  # product exists: reserve succeeded
 
         context.events.emit(
@@ -405,7 +412,7 @@ class _FaultableReleaseService:
 
         try:
             result = self._inner.release(
-                context.db_path, args.sku, args.order_id, args.quantity
+                context.engine, args.sku, args.order_id, args.quantity
             )
         except ReleaseExceedsReservedError as exc:
             context.events.emit(
@@ -420,7 +427,7 @@ class _FaultableReleaseService:
             )
             raise
 
-        after = _read_product(context.db_path, args.sku)
+        after = _read_product(context.engine, args.sku)
         assert after is not None
 
         context.events.emit(
@@ -453,10 +460,10 @@ class _RestockService:
 
     def execute(self, context, args):
         result = self._inner.restock(
-            context.db_path, args.sku, args.quantity
+            context.engine, args.sku, args.quantity
         )
 
-        after = _read_product(context.db_path, args.sku)
+        after = _read_product(context.engine, args.sku)
         assert after is not None
 
         context.events.emit(

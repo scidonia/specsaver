@@ -7,3 +7,12 @@ __pycache__/
 #*
 .ruff_cache/
 *.pyc
+
+# Coq build artifacts
+.lia.cache
+*.vo
+*.vok
+*.vos
+*.glob
+*.aux
+coq/gen

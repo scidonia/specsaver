@@ -6,7 +6,7 @@ is declared explicitly — no fragile positional counting.
 
 from __future__ import annotations
 
-import sqlite3 as _sqlite3
+from sqlalchemy import Engine, text
 
 from examples.bank_transfer.types import (
     AccountNotFoundError,
@@ -119,30 +119,26 @@ class TransferService:
 
     def transfer(
         self,
-        db_path: str,
+        engine: Engine,
         source_id: str,
         target_id: str,
         amount: int,
     ) -> TransferReceipt:
         """Spilled-out argument list — domain adapter unpacks TransferArgs."""
-        with _sqlite3.connect(db_path) as conn:
-            conn.execute("BEGIN")
-
+        with engine.begin() as conn:
             srow = conn.execute(
-                "SELECT balance, currency FROM accounts WHERE id = ?",
-                (source_id,),
+                text("SELECT balance, currency FROM accounts WHERE id = :id"),
+                {"id": source_id},
             ).fetchone()
             if srow is None:
-                conn.execute("ROLLBACK")
                 raise AccountNotFoundError(source_id, "", amount,
                                            f"Source {source_id!r} not found")
 
             trow = conn.execute(
-                "SELECT balance, currency FROM accounts WHERE id = ?",
-                (target_id,),
+                text("SELECT balance, currency FROM accounts WHERE id = :id"),
+                {"id": target_id},
             ).fetchone()
             if trow is None:
-                conn.execute("ROLLBACK")
                 raise AccountNotFoundError("", target_id, amount,
                                            f"Target {target_id!r} not found")
 
@@ -150,32 +146,31 @@ class TransferService:
             target_balance, target_currency = trow
 
             if source_currency != target_currency:
-                conn.execute("ROLLBACK")
                 raise CurrencyMismatchError(
                     source_id, target_id, amount,
                     f"Cannot transfer {source_currency} → {target_currency}",
                 )
 
             if source_balance < amount:
-                conn.execute("ROLLBACK")
                 raise InsufficientFundsError(
                     source_id, target_id, amount,
                     f"Balance {source_balance} < amount {amount}",
                 )
 
             conn.execute(
-                "UPDATE accounts SET balance = balance - ? WHERE id = ?",
-                (amount, source_id),
+                text("UPDATE accounts SET balance = balance - :amount"
+                     " WHERE id = :id"),
+                {"amount": amount, "id": source_id},
             )
             conn.execute(
-                "UPDATE accounts SET balance = balance + ? WHERE id = ?",
-                (amount, target_id),
+                text("UPDATE accounts SET balance = balance + :amount"
+                     " WHERE id = :id"),
+                {"amount": amount, "id": target_id},
             )
-            conn.execute("COMMIT")
 
-            return TransferReceipt(
-                transaction_id=self._next_id(),
-                source_id=source_id,
-                target_id=target_id,
-                amount=amount,
-            )
+        return TransferReceipt(
+            transaction_id=self._next_id(),
+            source_id=source_id,
+            target_id=target_id,
+            amount=amount,
+        )

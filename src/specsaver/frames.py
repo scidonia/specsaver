@@ -28,16 +28,10 @@ follow from observed), but they must agree with the contract's
 
 from __future__ import annotations
 
+import ast
 import dataclasses
-import re
 from dataclasses import dataclass
 from typing import Any
-
-_PATH_RE = re.compile(
-    r"^state\.([A-Za-z_][A-Za-z0-9_]*)"
-    r"(?:\[([A-Za-z_][A-Za-z0-9_]*)\])?"
-    r"(?:\.([A-Za-z_][A-Za-z0-9_]*))?$"
-)
 
 
 @dataclass(frozen=True)
@@ -48,10 +42,49 @@ class WritePath:
 
 
 def parse_write_path(raw: str) -> WritePath:
-    m = _PATH_RE.match(raw)
-    if m is None:
-        raise ValueError(f"malformed write path: {raw!r}")
-    return WritePath(field=m.group(1), key=m.group(2), attr=m.group(3))
+    """Parse a write path via the Python AST — no regex munging.
+
+    ``state.reservation_log`` → bare field; ``state.products[sku]`` →
+    keyed row; ``state.products[sku].reserved`` → keyed attribute.
+    The key must be a plain name (resolved against the call args).
+    """
+    try:
+        tree = ast.parse(raw, mode="eval").body
+    except SyntaxError as exc:
+        raise ValueError(f"malformed write path: {raw!r}") from exc
+
+    def _state_attr(node: ast.expr) -> str | None:
+        if (isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "state"):
+            return node.attr
+        return None
+
+    def _key_of(node: ast.expr) -> str | None:
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.slice, ast.Name)):
+            return node.slice.id
+        return None
+
+    # Bare field: state.<field>
+    if isinstance(tree, ast.Attribute) and isinstance(tree.value, ast.Name):
+        field = _state_attr(tree)
+        if field is not None:
+            return WritePath(field=field, key=None, attr=None)
+    # Keyed attribute: state.<field>[<key>].<attr>
+    if (isinstance(tree, ast.Attribute)
+            and isinstance(tree.value, ast.Subscript)):
+        key = _key_of(tree.value)
+        field = _state_attr(tree.value.value)
+        if key is not None and field is not None:
+            return WritePath(field=field, key=key, attr=tree.attr)
+    # Keyed row: state.<field>[<key>]
+    if isinstance(tree, ast.Subscript):
+        key = _key_of(tree)
+        field = _state_attr(tree.value)
+        if key is not None and field is not None:
+            return WritePath(field=field, key=key, attr=None)
+    raise ValueError(f"malformed write path: {raw!r}")
 
 
 def _resolve_key(args: Any, key_name: str) -> Any:
@@ -120,11 +153,23 @@ def _check_keyed_field(
     violations: list[str] = []
     old_keys = set(old_map)
     new_keys = set(new_map)
-    if new_keys != old_keys:
+    # Key-set discipline: no deletions, ever; additions only via
+    # keyed-row write paths (state.<field>[<key>] with no attribute —
+    # an insert permission).  Keyed-attribute paths keep the key set
+    # stable exactly.
+    removed = old_keys - new_keys
+    if removed:
         violations.append(
-            f"state.{name} key set changed outside the frame: "
-            f"{sorted(new_keys ^ old_keys)}"
+            f"state.{name} keys removed outside the frame: "
+            f"{sorted(removed)}"
         )
+    illegal_adds = (new_keys - old_keys) - whole_keys
+    if illegal_adds:
+        violations.append(
+            f"state.{name} keys added outside the frame: "
+            f"{sorted(illegal_adds)}"
+        )
+    if removed or illegal_adds:
         return violations
 
     for k in old_keys:

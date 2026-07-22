@@ -28,7 +28,7 @@ Usage (decorator — attaches to class, auto-discovers impl method):
 
     @contract(args_type=TransferArgs, feature="transfer.feature", ...)
     class TransferService:
-        def transfer(self, db_path, source_id, target_id, amount):
+        def transfer(self, engine, source_id, target_id, amount):
             ...
 """
 

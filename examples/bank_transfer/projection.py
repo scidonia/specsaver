@@ -22,6 +22,8 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import Engine, create_engine, text
+
 from examples.bank_transfer.events import EventLog, FundsReceived, TransferCompleted
 from examples.bank_transfer.types import (
     Account,
@@ -44,7 +46,7 @@ from specsaver.scenario_runner import ScenarioRunner
 class TransferExecutionContext:
     """The concrete world the implementation operates on."""
 
-    db_path: str
+    engine: Engine
     events: EventLog = field(default_factory=EventLog)
     ghost: TransferGhost = field(default_factory=TransferGhost)
 
@@ -120,7 +122,7 @@ class TransferMaterializer:
             conn.executescript(_SCHEMA)
             _populate(conn, witness.accounts, witness.limits)
         return TransferExecutionContext(
-            db_path=path,
+            engine=create_engine(f"sqlite:///{path}"),
             events=EventLog(),
             ghost=witness.ghost,
         )
@@ -139,12 +141,12 @@ class TransferProjection:
     """
 
     def snapshot(self, context: TransferExecutionContext) -> TransferSpecState:
-        with sqlite3.connect(context.db_path) as conn:
+        with context.engine.connect() as conn:
             account_rows = conn.execute(
-                "SELECT id, balance, currency FROM accounts"
+                text("SELECT id, balance, currency FROM accounts")
             ).fetchall()
             limit_rows = conn.execute(
-                "SELECT key, value FROM limits"
+                text("SELECT key, value FROM limits")
             ).fetchall()
 
         accounts: dict[str, Account] = {
@@ -230,9 +232,11 @@ def build_witness(row: dict[str, str]) -> TransferScenarioWitness:
 
 
 def cleanup(context: TransferExecutionContext) -> None:
-    """Remove the temp database after a test."""
-    if os.path.exists(context.db_path):
-        os.unlink(context.db_path)
+    """Dispose the engine and remove the temp database after a test."""
+    path = context.engine.url.database
+    context.engine.dispose()
+    if path and os.path.exists(path):
+        os.unlink(path)
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +278,7 @@ class _FaultableTransferService:
                 message="Simulated runtime fault",
             )
         result = self._inner.transfer(
-            context.db_path, args.source_id, args.target_id, args.amount
+            context.engine, args.source_id, args.target_id, args.amount
         )
         context.events.emit(
             "audit",
