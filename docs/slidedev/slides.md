@@ -171,11 +171,11 @@ C =\; &\langle \Sigma,\; \mathit{args},\; \mathsf{pre},\; \mathsf{post},\\
 $$
 
 <div class="text-sm mt-4 space-y-1">
-<div>$\mathcal{X}$ — exceptional exits (when + ensures + frame)</div>
-<div>$\mathcal{I}$ — invariants on every state</div>
-<div>$\mathcal{D}$ — derived-state definitions</div>
-<div>$\mathcal{W}$ / $\mathcal{R}$ — semantic frame</div>
-<div>$\mathcal{G}$ — ghost state</div>
+<div>$\mathcal{X}$  –  exceptional exits (when + ensures + frame)</div>
+<div>$\mathcal{I}$  –  invariants on every state</div>
+<div>$\mathcal{D}$  –  derived-state definitions</div>
+<div>$\mathcal{W}$ / $\mathcal{R}$  –  semantic frame</div>
+<div>$\mathcal{G}$  –  ghost state</div>
 </div>
 
 ---
@@ -566,7 +566,7 @@ Definition gen_post (sigma : sn_state)
 <span class="text-gray-400">code and hope</span>
 </div>
 
-<div class="text-3xl text-gray-500">↓</div>
+<div class="text-3xl text-gray-500">$\downarrow$</div>
 
 <div class="border border-green-800 rounded p-4 max-w-lg mx-auto">
 <span class="text-green-300 font-bold">Vericoding leaves</span><br>
