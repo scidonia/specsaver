@@ -68,11 +68,12 @@ from Behavioural Features to Machine-Checked Proofs}\\[4pt]
 LLM-driven code generation (``vibecoding'') trades correctness for
 velocity: generated code may run, but it leaves no durable
 specification, no behavioural guarantee, and no machine-checkable
-evidence that it satisfies its intended purpose.  We propose
-\emph{vericoding}, a verification-driven methodology in which a
-human-authored specification is the single source of semantic truth
-and the primary lasting artifact, with generated code as a replaceable
-implementation detail.  The specification takes the form of Gherkin
+evidence that it satisfies its intended purpose.  We describe a
+\emph{vericoding} workflow --- a methodology in which a human-authored
+specification is the single source of semantic truth and the primary
+lasting artifact, with generated code as a replaceable implementation
+detail --- and we present a toolchain, \textsf{specsaver}, to
+operationalise it.  The specification takes the form of Gherkin
 features (scenario tables), a mathematical contract (pure,
 boolean-valued predicates over pre/post-state, frames, and
 exceptions), and an abstract state schema; from this single
