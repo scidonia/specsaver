@@ -1,4 +1,4 @@
-"""Inventory service — SQLite-backed implementation.
+"""Inventory service — SQLite-backed implementation via SQLAlchemy.
 
 Three operations share one products table:
 
@@ -9,11 +9,16 @@ Three operations share one products table:
 The contracts live in contract.py as standalone Contract objects.
 The @contract decorator is *not* used here: it auto-discovers a single
 implementation method, which does not scale to multi-operation classes.
+
+The service works against any SQLAlchemy engine — a real SQLite file in
+production, or the theory's stub engine (``specsaver.theory.sql``) under
+verification.  ``engine.begin()`` gives commit-on-success /
+rollback-on-exception for free.
 """
 
 from __future__ import annotations
 
-import sqlite3 as _sqlite3
+from sqlalchemy import Engine, text
 
 from examples.inventory.types import (
     InsufficientStockError,
@@ -22,6 +27,10 @@ from examples.inventory.types import (
     ReleaseReceipt,
     ReservationReceipt,
     RestockReceipt,
+)
+
+_SELECT_PRODUCT = text(
+    "SELECT on_hand, reserved, reorder_point FROM products WHERE sku = :sku"
 )
 
 
@@ -37,22 +46,15 @@ class InventoryService:
 
     def reserve(
         self,
-        db_path: str,
+        engine: Engine,
         sku: str,
         order_id: str,
         quantity: int,
     ) -> ReservationReceipt:
         """Spilled-out argument list — domain adapter unpacks ReserveArgs."""
-        with _sqlite3.connect(db_path) as conn:
-            conn.execute("BEGIN")
-
-            row = conn.execute(
-                "SELECT on_hand, reserved, reorder_point"
-                " FROM products WHERE sku = ?",
-                (sku,),
-            ).fetchone()
+        with engine.begin() as conn:
+            row = conn.execute(_SELECT_PRODUCT, {"sku": sku}).fetchone()
             if row is None:
-                conn.execute("ROLLBACK")
                 raise ProductNotFoundError(
                     sku, order_id, quantity,
                     f"Product {sku!r} not found",
@@ -62,42 +64,34 @@ class InventoryService:
             available = on_hand - reserved
 
             if available < quantity:
-                conn.execute("ROLLBACK")
                 raise InsufficientStockError(
                     sku, order_id, quantity, available,
                     f"Available {available} < quantity {quantity}",
                 )
 
             conn.execute(
-                "UPDATE products SET reserved = reserved + ? WHERE sku = ?",
-                (quantity, sku),
+                text("UPDATE products SET reserved = reserved + :qty"
+                     " WHERE sku = :sku"),
+                {"qty": quantity, "sku": sku},
             )
-            conn.execute("COMMIT")
 
-            return ReservationReceipt(
-                reservation_id=self._next_id("rsv"),
-                sku=sku,
-                order_id=order_id,
-                quantity=quantity,
-            )
+        return ReservationReceipt(
+            reservation_id=self._next_id("rsv"),
+            sku=sku,
+            order_id=order_id,
+            quantity=quantity,
+        )
 
     def release(
         self,
-        db_path: str,
+        engine: Engine,
         sku: str,
         order_id: str,
         quantity: int,
     ) -> ReleaseReceipt:
-        with _sqlite3.connect(db_path) as conn:
-            conn.execute("BEGIN")
-
-            row = conn.execute(
-                "SELECT on_hand, reserved, reorder_point"
-                " FROM products WHERE sku = ?",
-                (sku,),
-            ).fetchone()
+        with engine.begin() as conn:
+            row = conn.execute(_SELECT_PRODUCT, {"sku": sku}).fetchone()
             if row is None:
-                conn.execute("ROLLBACK")
                 raise ProductNotFoundError(
                     sku, order_id, quantity,
                     f"Product {sku!r} not found",
@@ -106,52 +100,48 @@ class InventoryService:
             _on_hand, reserved, _reorder_point = row
 
             if reserved < quantity:
-                conn.execute("ROLLBACK")
                 raise ReleaseExceedsReservedError(
                     sku, order_id, quantity, reserved,
                     f"Reserved {reserved} < release quantity {quantity}",
                 )
 
             conn.execute(
-                "UPDATE products SET reserved = reserved - ? WHERE sku = ?",
-                (quantity, sku),
+                text("UPDATE products SET reserved = reserved - :qty"
+                     " WHERE sku = :sku"),
+                {"qty": quantity, "sku": sku},
             )
-            conn.execute("COMMIT")
 
-            return ReleaseReceipt(
-                sku=sku,
-                order_id=order_id,
-                quantity=quantity,
-            )
+        return ReleaseReceipt(
+            sku=sku,
+            order_id=order_id,
+            quantity=quantity,
+        )
 
     def restock(
         self,
-        db_path: str,
+        engine: Engine,
         sku: str,
         quantity: int,
     ) -> RestockReceipt:
-        with _sqlite3.connect(db_path) as conn:
-            conn.execute("BEGIN")
-
+        with engine.begin() as conn:
             row = conn.execute(
-                "SELECT on_hand FROM products WHERE sku = ?",
-                (sku,),
+                text("SELECT on_hand FROM products WHERE sku = :sku"),
+                {"sku": sku},
             ).fetchone()
             if row is None:
-                conn.execute("ROLLBACK")
                 raise ProductNotFoundError(
                     sku, "", quantity,
                     f"Product {sku!r} not found",
                 )
 
             conn.execute(
-                "UPDATE products SET on_hand = on_hand + ? WHERE sku = ?",
-                (quantity, sku),
+                text("UPDATE products SET on_hand = on_hand + :qty"
+                     " WHERE sku = :sku"),
+                {"qty": quantity, "sku": sku},
             )
-            conn.execute("COMMIT")
 
-            return RestockReceipt(
-                receipt_id=self._next_id("stk"),
-                sku=sku,
-                quantity=quantity,
-            )
+        return RestockReceipt(
+            receipt_id=self._next_id("stk"),
+            sku=sku,
+            quantity=quantity,
+        )

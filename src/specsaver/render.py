@@ -466,6 +466,30 @@ def _make_old_call() -> ast.Call:
     )
 
 
+def _cut_lambda(text: str) -> str:
+    """Cut a lambda expression at its end, bracket-depth aware.
+
+    getsource on a lambda that shares a line with list/dict brackets
+    (``requires=[lambda state, args: args.x > 0],``) yields trailing
+    ``]``/``,`` junk.  Scan past the parameter list (to the depth-0
+    ``:``), then cut at the first bracket-close or comma at depth 0.
+    """
+    depth = 0
+    body_start = None
+    for i, ch in enumerate(text):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+            if depth < 0:
+                return text[:i]
+        elif ch == ":" and depth == 0 and body_start is None:
+            body_start = i
+        elif ch == "," and depth == 0 and body_start is not None:
+            return text[:i]
+    return text
+
+
 def _extract_return_expression_with_params(
     func: Callable,
 ) -> tuple[str | None, tuple[str, ...]]:
@@ -482,6 +506,8 @@ def _extract_return_expression_with_params(
     idx = stripped.find("lambda ")
     if idx > 0:
         stripped = stripped[idx:]
+    if idx >= 0:
+        stripped = _cut_lambda(stripped)
     try:
         tree = ast.parse(stripped, mode="eval")
         if isinstance(tree.body, ast.Lambda):

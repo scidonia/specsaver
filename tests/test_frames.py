@@ -141,7 +141,33 @@ def test_key_insertion_caught():
     writes = {"state.products[sku].reserved"}
     violations = check_frame(_SCHEMA, writes, before, _ARGS, after)
     assert len(violations) == 1
-    assert "key set changed" in violations[0]
+    assert "added" in violations[0]
+
+
+def test_key_insertion_allowed_via_keyed_row_path():
+    # keyed-row write paths permit inserting the args-resolved key
+    before = _state({"S2": _p("S2")})
+    after = _state({"S1": _p("S1"), "S2": _p("S2")})
+    writes = {"state.products[sku]"}
+    assert check_frame(_SCHEMA, writes, before, _ARGS, after) == []
+
+
+def test_key_insertion_of_unlisted_key_rejected():
+    before = _state({"S2": _p("S2")})
+    after = _state({"S1": _p("S1"), "S2": _p("S2"), "S9": _p("S9")})
+    writes = {"state.products[sku]"}
+    violations = check_frame(_SCHEMA, writes, before, _ARGS, after)
+    assert len(violations) == 1
+    assert "added" in violations[0] and "S9" in violations[0]
+
+
+def test_key_deletion_always_rejected():
+    before = _state({"S1": _p("S1"), "S9": _p("S9")})
+    after = _state({"S1": _p("S1")})
+    writes = {"state.products[sku]", "state.products[sku].reserved"}
+    violations = check_frame(_SCHEMA, writes, before, _ARGS, after)
+    assert len(violations) == 1
+    assert "removed" in violations[0]
 
 
 def test_whole_row_write_allowed_for_that_key_only():

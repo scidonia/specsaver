@@ -18,7 +18,10 @@ classifiers = [
 requires-python = ">=3.12"
 dependencies = [
     "gherkin-official>=29.0.0",
+    "pydantic>=2.13.4",
     "rich>=13.0.0",
+    "sqlalchemy>=2.0.51",
+    "sqlglot>=27",
     "typer>=0.16.0",
 ]
 
@@ -46,6 +49,14 @@ extend-exclude = ["*.feature", ".#*"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4"]
 ignore = ["UP047"]
+
+[tool.ruff.lint.per-file-ignores]
+# Imported from axiomander — keep upstream style for easy sync.
+"src/specsaver/backend/**" = [
+    "B007", "B009", "B905", "C416", "E501", "F401", "F841", "F541",
+    "I001", "N817", "UP007", "UP045", "W292",
+]
+"stubs/**" = ["E501"]
 
 [dependency-groups]
 dev = [

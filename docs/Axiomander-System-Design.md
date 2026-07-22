@@ -190,6 +190,66 @@ system insofar as the refinement is maintained — and the runtime
 runner continuously validates the real side against the same
 contracts.
 
+### 3.6 The theory as internalised ghost algebra
+
+Precisely: the trace is the **term algebra of the effect signature,
+internalised as a ghost value**; the stub is its computable model;
+the final interpretation is the fold.  The algebra's sorts are the
+theory-state fields (`store`, `staged`, `cursor`, `tx`, `trace`), its
+operations are the CallRules, and its equations are the theory's laws
+(`begin;rollback ≈ skip` on `store`, `select` is pure on `store`).
+It is a *ghost* algebra because none of `staged`/`cursor`/`trace`
+exists in the concrete program — they are specification-state the
+algebra internalises instead of leaving in the metatheory.
+
+Because the algebra has a computable model, **composition at exit
+points is calculation, not proof**.  This yields a two-mode
+discipline:
+
+| Sequence shape | Composition mode | Proof cost at intermediates |
+|---|---|---|
+| Concrete, finite (straight-line op body, one transaction) | **Fold the algebra** | **zero** — obligations live only at the boundary: (a) the impl really made these calls (trace/lowering fidelity), (b) the domain contract holds of the folded state |
+| Abstract/unbounded (loops, data-dependent call counts, verifying a client without callee code) | **Opaque `FunSpec` per call** (`wp_call`) | per-call pre/post — opacity is necessary exactly where there is nothing concrete to fold |
+
+Call-site contracts are therefore needed precisely where calculation
+cannot reach; for straight-line implementations the intermediates
+vanish.  This is also the justification for obligation dumping: the
+model is a computable function, so the O-series obligations are
+first-order statements about *evaluated* values — which is why
+portfolio automation has a chance at all.
+
+**Modularity** of ghost algebras is achieved by four mechanisms, in
+order of commitment:
+
+1. **Signature coproduct.**  Theories compose by summing signatures
+   (`SQL ⊕ Logging ⊕ OTel`); the combined trace is a list over the
+   sum.  Today's per-type logs (`reservation_log`, `gauge_log`,
+   `alert_log`) are projections of one interleaved trace through the
+   coproduct's injections.
+2. **State product with disjoint footprints.**  Each algebra owns its
+   ghost sorts; the composed ghost state is the record product, and
+   footprints must stay disjoint by construction — SQL's `writes`
+   never name OTel's sorts, so frames remain local.
+3. **Interactions default to the domain, not the theory.**  Claims
+   like "every transaction is wrapped in a span" are domain clauses
+   over the interleaved trace, not equations of either algebra — the
+   moment interactions become ambient equations, modularity dies.
+   Escape hatch: a named *bridge algebra* over both signatures,
+   opted into explicitly.
+4. **Theory morphisms as homomorphisms.**  The stub→SQLite refinement
+   (the fidelity suite is its evidence) and the projection
+   `α : theory-state → SpecState` must preserve operations — a store
+   transition plus events maps to the SpecState transition.  Then
+   domain contracts *lift*: truth at algebra level implies truth at
+   domain level via α — the formal content of "lifting to spec
+   state".
+
+A theory module therefore declares one interface: **sorts, signature,
+operations (CallRules), equations, footprints, projections**.
+Composition is then mechanical: product the sorts, coproduct the
+signatures, union the equations, interleave the traces, keep
+footprints disjoint.
+
 ---
 
 ## 4. The proof ladder
@@ -289,6 +349,20 @@ the obligations, never goals.
 `ContractLinter` over every predicate in both examples.  Output: a
 coverage table (which clauses land in the compilable fragment vs.
 need the phase-3 value model).  Evidence gates everything after.
+
+*Results (`scripts/phase0_coverage.py`, 58 clauses):* **FULL 16,
+OPAQUE 10, VACUOUS 20, UNSUPPORTED 12** — 28% meaningful coverage.
+The spike classifies honesty, not just success: VACUOUS clauses
+compile to variable-free literals (`sku ∈ products` → `False ≠ 0`,
+the invariant → `true`, `sum` → `0`) — silent trivialisation, worse
+than rejection.  This fixes the Phase 1–3 scope precisely:
+
+  - UNSUPPORTED (12) — state-path deltas
+    (`new.products[sku].reserved = old…`): Z-abstraction flattening.
+  - VACUOUS (20) — membership, `all`/`sum` generators over maps,
+    helper calls: finite-map model + helper inlining.
+  - OPAQUE (10) — `extends_by_one`: list value model or axiomatised
+    relation.
 
 **Phase 1 — The Z-abstraction bridge (`axiomander/lower/`).**
 Flatten state paths to Z variables — note that frame write-paths

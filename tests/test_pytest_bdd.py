@@ -113,7 +113,7 @@ def when_transfer(amount, source, target, ctx):
             result = svc.execute(context, witness.args)
         else:
             svc = TransferService()
-            result = transfer_contract.invoke(svc, context.db_path, witness.args)
+            result = transfer_contract.invoke(svc, context.engine, witness.args)
         ctx["result"] = result
     except Exception as exc:
         ctx["result"] = exc
