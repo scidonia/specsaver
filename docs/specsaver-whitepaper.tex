@@ -140,6 +140,18 @@ drive \emph{testing} against every row of every Examples table; and
 finally the same contracts are \emph{lowered} to Rocq and proved ---
 the ``formalised lockdown.''
 
+The toolchain supports two development flows.  In
+\emph{contract-first} development, features are written first, then
+contracts, then an implementation is built against the contract as a
+specification, then the implementation is tested and lowered to proof.
+In \emph{retrospective} development, a developer begins with existing
+feature files and an existing implementation, writes the contract to
+capture the behaviour already observed in testing, re-runs the test
+suite under contract checking to validate the specification, and then
+proceeds to formal proof.  Both flows converge on the same long-lived
+artifact --- the contract --- and the same endpoint: a machine-checked
+proof that the specification is internally sound.
+
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
