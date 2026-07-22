@@ -16,5 +16,8 @@ __pycache__/
 *.glob
 *.aux
 coq/gen
-docs/*.log
-docs/*.out
+docs/**/*.log
+docs/**/*.out
+docs/**/*.aux
+node_modules/
+dist/
