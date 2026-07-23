@@ -2,6 +2,9 @@
 theme: default
 colorSchema: dark
 title: Axiomander — Durable Specifications for Python
+fonts:
+  sans: Fira Code
+  mono: Fira Code
 head: '<style>h1{color:#fbbf24 !important}h2{color:#94a3b8 !important;margin-bottom:0.4em}</style>'
 ---
 
@@ -198,6 +201,35 @@ reserve_contract = Contract(
 
 <div class="text-xs text-gray-400 mt-2">
 One spec.  Tested on real data.  Lowered to proof obligations.
+</div>
+
+---
+
+# The Same Contract, Mathematical Notation
+
+The same specification, expressed as predicates over SpecState:
+
+$$
+\begin{aligned}
+\mathsf{pre}(s, a) \;=\;& a.\mathit{quantity} > 0 \;\land\; a.\mathit{sku} \in s.\mathit{products} \\[4pt]
+\mathsf{post}(s, a, r, s') \;=\;&
+  s'.\mathit{products}[a.\mathit{sku}].\mathit{reserved}
+  = s[\,\cdot\,].\mathit{reserved} + a.\mathit{quantity} \\[4pt]
+\mathcal{X} \;=\;& \{\,
+  \langle \mathsf{InsufficientStock},\;
+    s.\mathit{available}(a.\mathit{sku}) < a.\mathit{quantity},\;
+    \{\mathit{failure\_log}\}
+  \rangle \,\} \\[4pt]
+\mathcal{W} \;=\;& \{\,
+  \mathit{products}[\mathit{sku}].\mathit{reserved}
+\,\}
+\end{aligned}
+$$
+
+<div class="text-xs text-gray-400 mt-4">
+This is the notation the lowering pipeline translates into Rocq
+propositions.  Users write Python; the mathematical form is derived
+automatically.
 </div>
 
 ---
