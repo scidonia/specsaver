@@ -11,7 +11,7 @@ drawings:
   persist: false
 transition: slide-left
 mdc: false
-head: '<style>h1{color:#f59e0b !important}h2{color:#d97706 !important}</style>'
+head: '<style>h1{color:#fbbf24 !important}h2{color:#94a3b8 !important}</style>'
 ---
 
 # Vericoding
@@ -70,40 +70,11 @@ Generated code is a replaceable implementation detail.
 
 ---
 
-# The Pipeline
-
-<div class="grid grid-cols-[auto_1fr] gap-y-2 gap-x-3 mt-6 text-sm">
-
-<div class="text-amber-400 font-bold text-right">1.</div>
-<div><span class="font-bold">Feature</span> — Gherkin scenario tables define what must work</div>
-
-<div class="text-amber-400 font-bold text-right">2.</div>
-<div><span class="font-bold">Implementation</span> — write the production code, SQLAlchemy / logging / OTel</div>
-
-<div class="text-amber-400 font-bold text-right">3.</div>
-<div><span class="font-bold">Testing (sanity)</span> — make sure it basically works</div>
-
-<div class="text-amber-400 font-bold text-right">4.</div>
-<div><span class="font-bold">Contract</span> — capture observed behaviour as mathematical spec</div>
-
-<div class="text-amber-400 font-bold text-right">5.</div>
-<div><span class="font-bold">Testing (dialectic)</span> — re-run under contract checking;<br>
-<span class="text-gray-400">either the contract or the implementation is wrong → reconcile</span></div>
-
-<div class="text-amber-400 font-bold text-right">6.</div>
-<div><span class="font-bold">Formal lockdown</span> — lower to Coq, LLM closes obligations;<br>
-<span class="text-gray-400">DISPROVED yields witnesses → back to step 5</span></div>
-
-</div>
-
----
-layout: two-cols
----
 # Two Development Flows
 
-<br>
+::left::
 
-## Retrospective (typical)
+## Retrospective
 
 <div class="border-l-4 border-yellow-400 pl-3 text-sm">
 
@@ -136,10 +107,10 @@ DISPROVED yields witnesses → back to the dialectic.
 </div>
 
 ---
-layout: two-cols
----
 
 # Contract Language
+
+::left::
 
 ## The pure terminating fragment of Python
 
@@ -250,8 +221,6 @@ exceptions = [
 The runner checks: correct exception raised, failure telemetry contains exactly one new event with exact fields, nothing outside the exit's writes changed.
 </div>
 
----
-layout: two-cols
 ---
 
 # Symmetric Projection
@@ -519,10 +488,10 @@ Token is a caller-supplied argument (args-resolved insert key).
 </div>
 
 ---
-layout: two-cols
----
 
 # Verified State
+
+::left::
 
 | Domain | Tables | Ops | Rows | Obligations |
 |--------|--------|-----|------|-------------|
