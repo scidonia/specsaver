@@ -453,7 +453,7 @@ Operations interpreted over a pure, inspectable state model — not a mock.
 <div class="text-sm">
 
 ```text
-Python contract &rarr; mathematical propositions &rarr; Rocq proof kernel &rarr; verdict
+Python contract → mathematical propositions → Rocq proof kernel → verdict
 ```
 
 <div class="grid grid-cols-3 gap-4 mt-6">
