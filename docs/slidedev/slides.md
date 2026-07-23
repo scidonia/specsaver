@@ -349,26 +349,41 @@ specification state.
 **The contract compares those two states.**
 
 <div class="my-4 flex justify-center">
-<div class="text-xs font-mono text-center">
-<div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30 w-[130px]">Real DB before</div>
-<span class="mx-1 text-gray-400">──observe──→</span>
-<div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30 w-[130px]">SpecState before</div>
-<br>
-<div class="inline-block w-[130px] text-center text-gray-400 my-1">│</div>
-<div class="w-[220px] inline-block"></div>
-<div class="inline-block w-[130px] text-center text-gray-400 my-1">│</div>
-<br>
-<div class="inline-block w-[130px] text-center text-gray-400 my-1">│</div>
-<div class="w-[110px] inline-block text-gray-400">run code</div>
-<div class="w-[110px] inline-block text-gray-400 text-right">check contract</div>
-<br>
-<div class="inline-block w-[130px] text-center text-gray-400 my-1">↓</div>
-<div class="w-[220px] inline-block"></div>
-<div class="inline-block w-[130px] text-center text-gray-400 my-1">↓</div>
-<br>
-<div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30 w-[130px]">Real DB after</div>
-<span class="mx-1 text-gray-400">──observe──→</span>
-<div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30 w-[130px]">SpecState after</div>
+<div class="text-xs">
+
+<div class="flex items-center justify-center gap-3">
+  <div class="border border-blue-400 rounded px-3 py-1 bg-blue-900/30 text-center w-[120px]">Real DB<br>before</div>
+  <div class="text-gray-400 text-lg">──────</div>
+  <div class="text-gray-500 text-[10px]">observe<br>(snap)</div>
+  <div class="text-gray-400 text-lg">──────→</div>
+  <div class="border border-green-400 rounded px-3 py-1 bg-green-900/30 text-center w-[120px]">SpecState<br>before</div>
+</div>
+
+<div class="flex items-center justify-center gap-3 mt-1">
+  <div class="w-[120px] text-center text-gray-400 text-lg">│</div>
+  <div class="w-[70px]"></div>
+  <div class="text-[10px] text-orange-300 w-[80px] text-center">execution<br>(the real thing)</div>
+  <div class="w-[70px]"></div>
+  <div class="w-[120px] text-center text-gray-400 text-lg">│</div>
+  <div class="text-[10px] text-purple-300">contract<br>(what must hold)</div>
+</div>
+
+<div class="flex items-center justify-center gap-3 mt-1">
+  <div class="w-[120px] text-center text-gray-400 text-lg">↓</div>
+  <div class="w-[70px]"></div>
+  <div class="w-[80px]"></div>
+  <div class="w-[70px]"></div>
+  <div class="w-[120px] text-center text-gray-400 text-lg">↓</div>
+</div>
+
+<div class="flex items-center justify-center gap-3 mt-1">
+  <div class="border border-blue-400 rounded px-3 py-1 bg-blue-900/30 text-center w-[120px]">Real DB<br>after</div>
+  <div class="text-gray-400 text-lg">──────</div>
+  <div class="text-gray-500 text-[10px]">observe<br>(snap)</div>
+  <div class="text-gray-400 text-lg">──────→</div>
+  <div class="border border-green-400 rounded px-3 py-1 bg-green-900/30 text-center w-[120px]">SpecState<br>after</div>
+</div>
+
 </div>
 </div>
 
@@ -381,18 +396,23 @@ specification state.
 <div class="space-y-3 text-xs mt-4">
 
 <div class="border-l-2 border-green-400 pl-2">
-<b>At runtime:</b> the contract predicates evaluate to Python bool
-on real database state — concrete evidence.
+<b>At runtime:</b> the left path — `observe`, execute, `observe` —
+runs against real SQLite.  The contract predicates evaluate to
+Python bool on real state.
 </div>
 
 <div class="border-l-2 border-purple-400 pl-2">
-<b>At proof time:</b> the same predicates are translated to Rocq
-propositions over an abstract model — universal guarantees.
+<b>At proof time:</b> the right edge — `contract` — is not a function
+but a <b>predicate</b> over (pre-state, args, result, post-state).
+It comes from the contract's `ensures` clause.  The lowering proves
+that for every admissible pre-state there exists a post-state
+satisfying the predicate.
 </div>
 
 <div class="border-l-2 border-amber-400 pl-2">
-<b>One model, two levels.  Abstract proofs reason purely about
-spec-state evolution — no SQLite, no engine.</b>
+<b>Symmetry binds them:</b> the same `observe` is used before and
+after execution, so the concrete left path and the abstract right
+path reason about the same interpretation of state.
 </div>
 
 </div>
