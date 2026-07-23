@@ -316,12 +316,15 @@ reserved increases by 40
 <div class="mt-4 space-y-3 text-xs">
 
 <div class="border-l-4 border-amber-400 pl-2">
-The scenario exposes the disagreement as a concrete failure — not a vague suspicion, but a specific row with specific values.
+The scenario exposes the disagreement as a concrete failure — a specific row with specific values.  The developer resolves it: fix the code, or fix the contract.
 </div>
 
 <div class="border-l-4 border-green-400 pl-2">
-The developer resolves it: fix the code, or fix the contract.  The contract is a
-<b>living artifact</b> — it evolves with the code, but it remains the source of truth.
+<b>Specification is iterative.</b>  Contracts are not written once and frozen.  They are refined as edge cases are discovered, as the domain is understood better, as gaps are found.  Each cycle tightens the spec.
+</div>
+
+<div class="border-l-4 border-purple-400 pl-2">
+<b>Once proved, the contract guards refactoring.</b>  With machine-checked proof that the abstract model satisfies the contract, the implementation can be rewritten — new library, new schema, new language — and the same spec still tells you what behaviours must obtain.
 </div>
 
 </div>
