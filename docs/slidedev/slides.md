@@ -104,25 +104,23 @@ layout: two-cols
 <br>
 
 ## Retrospective (typical)
-<div class="border-l-4 border-yellow-400 pl-3 text-sm mt-1">
-Feature → Impl → Testing (sanity) → Contract → Testing (dialectic) → Formal Proof
-</div>
-<div class="text-gray-400 text-xs mt-2">
-Features and code first. Contracts capture observed behaviour.
-Re-run under contract checking: <b>contract or implementation is wrong</b>
-— the dialectic. Only when both agree: formal proof.
-</div>
+
+- **Feature** — Gherkin scenario tables
+- **Implementation** — write the production code
+- **Testing (sanity)** — make sure it basically works
+- **Contract** — capture observed behaviour as mathematical spec
+- **Testing (dialectic)** — re-run under contract checking; either contract or implementation is wrong — the dialectic
+- **Formal Proof** — lower to Coq, LLM closes obligations; DISPROVED → back to dialectic
 
 ::right::
 
 ## Contract-First
-<div class="border-l-4 border-cyan-400 pl-3 text-sm mt-1">
-Feature → Contract → Impl → Testing → Formal Proof
-</div>
-<div class="text-gray-400 text-xs mt-2">
-Contracts as acceptance criteria before code.
-Build implementation against the specification.
-</div>
+
+- **Feature** — Gherkin scenario tables
+- **Contract** — write spec as acceptance criteria
+- **Implementation** — build code against the specification
+- **Testing** — validate that implementation satisfies contract
+- **Formal Proof** — machine-checked against kernel
 
 <div class="mt-6 text-center text-xs text-green-400 font-bold">
 Both converge: the contract is the lasting artifact.<br>
