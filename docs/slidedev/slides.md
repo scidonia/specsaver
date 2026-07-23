@@ -111,7 +111,25 @@ different implementations.  The code becomes disposable.
 
 # Running Example: Inventory Reserve
 
-An ordinary Python function against SQLAlchemy:
+<div class="text-xs border-l-2 border-green-400 pl-2 mb-3">
+
+**Feature file (Gherkin):**
+
+```
+Scenario: Happy path reservation
+  Given a product "S1" with on-hand 100
+    reserved 10 and reorder point 20
+  When 30 units are reserved for "O1"
+  Then the reserved quantity is now 40
+
+Examples:
+  | sku | on_hand | reserved | qty | outcome |
+  | S1  | 100     | 10       | 30  | success |
+```
+
+</div>
+
+**Implementation (Python):**
 
 ```python
 def reserve(self, engine, sku, order_id, quantity):
