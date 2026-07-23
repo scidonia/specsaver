@@ -362,9 +362,13 @@ specification state.
   <div></div>
   <div class="text-center text-gray-500 text-[10px]">contract</div>
 
-  <div class="border-l-2 border-gray-500 ml-[45px] h-[18px]"></div>
+  <div class="border-l-2 border-gray-500 ml-[45px] h-[14px]"></div>
   <div></div>
-  <div class="border-l-2 border-gray-500 ml-[45px] h-[18px]"></div>
+  <div class="border-l-2 border-gray-500 ml-[45px] h-[14px]"></div>
+
+  <div class="text-center text-gray-400 text-sm">▼</div>
+  <div></div>
+  <div class="text-center text-gray-400 text-sm">▼</div>
 
   <div class="border border-blue-400 rounded px-1 py-1 bg-blue-900/30 text-center">Real DB<br>after</div>
   <div class="text-center text-gray-400">─snap→</div>
