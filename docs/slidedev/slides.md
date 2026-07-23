@@ -15,7 +15,7 @@ head: '<style>h1{color:#fbbf24 !important}h2{color:#94a3b8 !important;margin-bot
 
 ---
 
-# AI Can Regenerate Code
+# AI Can (Re)generate Code
 
 ## It Cannot Infer Intent That Was Never Written
 
@@ -67,8 +67,9 @@ intent is lost the moment the code changes.
 - AI-assisted rewrites are validated against the spec
 
 <div class="mt-4 border-l-4 border-amber-400 pl-3 text-xs text-amber-300">
-Every Python project already has a specification — it's just scattered.
-Specsaver puts it into a single executable artifact.
+Specsaver creates a <b>specification asset</b> — Gherkin features,
+contracts, and a domain declaration — that can test and prove many
+different implementations.  The code becomes disposable.
 </div>
 
 </div>
