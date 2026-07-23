@@ -105,6 +105,8 @@ layout: two-cols
 
 ## Retrospective (typical)
 
+<div class="border-l-4 border-yellow-400 pl-3 text-sm">
+
 - **Feature** — Gherkin scenario tables
 - **Implementation** — write the production code
 - **Testing (sanity)** — make sure it basically works
@@ -112,15 +114,21 @@ layout: two-cols
 - **Testing (dialectic)** — re-run under contract checking; either contract or implementation is wrong — the dialectic
 - **Formal Proof** — lower to Coq, LLM closes obligations; DISPROVED → back to dialectic
 
+</div>
+
 ::right::
 
 ## Contract-First
+
+<div class="border-l-4 border-cyan-400 pl-3 text-sm">
 
 - **Feature** — Gherkin scenario tables
 - **Contract** — write spec as acceptance criteria
 - **Implementation** — build code against the specification
 - **Testing** — validate that implementation satisfies contract
 - **Formal Proof** — machine-checked against kernel
+
+</div>
 
 <div class="mt-6 text-center text-xs text-green-400 font-bold">
 Both converge: the contract is the lasting artifact.<br>
