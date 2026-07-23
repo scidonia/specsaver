@@ -59,7 +59,7 @@ intent is lost the moment the code changes.
 
 <div>
 
-**What we want:**
+<div class="text-green-400 font-bold">What we want:</div>
 
 - Intent is explicit and machine-checkable
 - The same spec drives testing, checking, and proof
