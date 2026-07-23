@@ -267,7 +267,7 @@ and after execution.  Contracts compare the pair.
 </div>
 
 <div class="flex gap-8 justify-center my-1">
-  <div class="text-green-400 text-sm">same function</div>
+  <div></div>
   <div class="text-gray-500">↓ <span class="text-blue-300 text-[10px]">snap</span></div>
 </div>
 
@@ -346,28 +346,36 @@ prove it against the kernel tomorrow.  The lift is automatic.
 
 # Symmetric Projection — Runner
 
-<div class="grid grid-cols-2 gap-3 mt-4 text-sm">
+<div class="grid grid-cols-2 gap-6 mt-6">
 
-<div class="space-y-1">
-<div class="text-orange-300">1. materialize</div>
-<div class="text-xs text-gray-400 ml-3">witness → temp SQLite DB + engine + EventLog</div>
-
-<div class="text-orange-300">2. pre-check</div>
-<div class="text-xs text-gray-400 ml-3">invariants on pre-state; admissibility (requires)</div>
-
-<div class="text-orange-300">3. execute</div>
-<div class="text-xs text-gray-400 ml-3">service runs against real SQLite via SQLAlchemy;<br>wrapper emits typed events into the log</div>
+<div class="space-y-4">
+<div>
+<div class="text-orange-300 font-bold">1. materialize</div>
+<div class="text-sm text-gray-400">witness → temp SQLite DB + engine + EventLog</div>
+</div>
+<div>
+<div class="text-orange-300 font-bold">2. pre-check</div>
+<div class="text-sm text-gray-400">invariants on pre-state; admissibility (requires)</div>
+</div>
+<div>
+<div class="text-orange-300 font-bold">3. execute</div>
+<div class="text-sm text-gray-400">service runs against real SQLite via SQLAlchemy; wrapper emits typed events into the log</div>
+</div>
 </div>
 
-<div class="space-y-1">
-<div class="text-orange-300">4. frame check</div>
-<div class="text-xs text-gray-400 ml-3">everything outside writes unchanged</div>
-
-<div class="text-orange-300">5. derived check</div>
-<div class="text-xs text-gray-400 ml-3">derived fields ≡ recomputed from observed</div>
-
-<div class="text-orange-300">6. post-check</div>
-<div class="text-xs text-gray-400 ml-3">ensures (or exit ensures) for the outcome;<br>invariants on post-state</div>
+<div class="space-y-4">
+<div>
+<div class="text-orange-300 font-bold">4. frame check</div>
+<div class="text-sm text-gray-400">everything outside writes unchanged</div>
+</div>
+<div>
+<div class="text-orange-300 font-bold">5. derived check</div>
+<div class="text-sm text-gray-400">derived fields ≡ recomputed from observed</div>
+</div>
+<div>
+<div class="text-orange-300 font-bold">6. post-check</div>
+<div class="text-sm text-gray-400">ensures (or exit ensures) for the outcome; invariants on post-state</div>
+</div>
 </div>
 
 </div>
@@ -499,131 +507,41 @@ $$
 \mathsf{pre}(s, a) \;=\; a.\mathit{quantity} > 0 \;\wedge\; a.\mathit{sku} \in s.\mathit{products}
 $$
 
-**Post-condition (excerpt):**
+**Post-condition:**
 $$
-\begin{aligned}
-\mathsf{post}(s, a, r, s') \;=\;&
-s'.\mathit{products}[a.\mathit{sku}].\mathit{reserved}
-  \;=\; s[\,\cdot\,].\mathit{reserved} + a.\mathit{quantity} \\
-\wedge\;& \mathsf{extends\_by\_one}(s.\mathit{reservation\_log},\, s'.\mathit{reservation\_log},\,
-      \lambda e.\; e.\mathit{sku} = a.\mathit{sku}) \\
-\wedge\;& \mathsf{implies}(\mathit{crossed}(s,a,s'),\;
-      \mathsf{extends\_by\_one}(s.\mathit{alert\_log},\, s'.\mathit{alert\_log},\;
-        \ldots))
-\end{aligned}
+\mathsf{post}(s, a, r, s') \;=\;
+s'.reserved = s.reserved + a.quantity
+\;\land\;
+\mathsf{extends\_by\_one}(s.res\_log, s'.res\_log, \ldots)
 $$
 
 **Exception exit:**
 $$
-\mathcal{X} = \bigl\{\,
+\mathcal{X} = \{\,
 \langle \mathsf{InsufficientStock},\;
-       s.\mathit{available}(a.\mathit{sku}) < a.\mathit{quantity},\;
-       \{\mathit{failure\_log}\},\;
-       \mathsf{failure\_ensures}
-\rangle \,\bigr\}
+s.available < a.quantity,\;
+\{failure\_log\}
+\rangle \,\}
 $$
 
 </div>
 
 ---
 ---
-
-# Example: Invitations
-
-<div class="text-sm">
-
-<div>
-<div>
-
-**Invite** (insert frame):
-$$
-\begin{aligned}
-\mathsf{post}_{\mathit{invite}}(s,a,r,s') =\;&
-s'.\mathit{invitations}[a.\mathit{token}].\mathit{status} = \text{pending} \\
-\wedge\;& s'.\mathit{invitations}[a.\mathit{token}].\mathit{expires\_at}
-       = a.\mathit{now} + 7\!\cdot\!86400
-\end{aligned}
-$$
-
-</div>
-<div>
-
-**Accept** (multi-table delta):
-$$
-\begin{aligned}
-\mathsf{post}_{\mathit{accept}}(s,a,r,s') =\;&
-s'.\mathit{invitations}[a.\mathit{token}].\mathit{status} = \text{accepted} \\
-\wedge\;& s'.\mathit{members}[a.\mathit{user\_id}].\mathit{org\_id}
-       = s.\mathit{invitations}[a.\mathit{token}].\mathit{org\_id} \\
-\wedge\;& s'.\mathit{users}[a.\mathit{user\_id}].\mathit{default\_org}
-       = s.\mathit{invitations}[a.\mathit{token}].\mathit{org\_id}
-\end{aligned}
-$$
-
-</div>
-</div>
-
-<div class="border border-purple-800 rounded p-3 mt-6 text-sm">
-<span class="text-purple-300">Design decisions for verifiability:</span>
-Token is a caller-supplied argument (args-resolved insert key).
-<span class="text-yellow-300">now</span> is an integer epoch argument (expiry is a pure comparison).
-</div>
-
-</div>
 
 ---
 
 # Verified State
 
-<div class="grid grid-cols-2 gap-6 mt-4">
+<table class="text-sm w-full mt-4">
+<tr><th>Domain</th><th>Tables</th><th>Ops</th><th>Rows</th><th>Obligations</th></tr>
+<tr><td>inventory</td><td>1</td><td>3</td><td>22</td><td>6/6, 6/6, 4/4</td></tr>
+<tr><td>bank_transfer</td><td>2</td><td>1</td><td>11</td><td>7/7</td></tr>
+<tr><td><b>Total</b></td><td></td><td><b>6</b></td><td><b>42</b></td><td><b>23/23</b></td></tr>
+</table>
 
-<div>
-
-| Domain | Tables | Ops | Rows | Obligations |
-|--------|--------|-----|------|-------------|
-| inventory | 1 | 3 | 22 | 6/6, 6/6, 4/4 |
-| bank_transfer | 2 | 1 | 11 | 7/7 |
-| invitations | 3 | 2 | 9 | runtime-only |
-| **Total** | | **6** | **42** | **23 in 23** |
-
-<br>
-
-<div class="text-sm text-gray-400">
+<div class="mt-6 text-sm text-gray-400">
 All four store-obligation contracts fully proved in Rocq.
-Trace obligations (extends_by_one) active in development.
-</div>
-
-</div>
-<div>
-
-```coq
-Definition gen_post (sigma : sn_state)
-    (vs : list sn_val) (r : Result)
-    (ups : cell_updates) : Prop :=
-  exists sku order quantity store_d
-         on_hand_sku reserved_sku
-         reorder_point_sku,
-    vs = [LitString sku;
-          LitString order;
-          LitInt quantity] /\
-    sigma !! store_loc =
-      Some (LitDict store_d) /\
-    dict_lookup_str sku store_d =
-      Some (row_of on_hand_sku
-                 reserved_sku
-                 reorder_point_sku) /\
-    r = RVal (LitInt reserved_sku) /\
-    ups = [(store_loc,
-            LitDict
-              (dict_insert_str sku
-                (row_of on_hand_sku
-                  (reserved_sku + quantity)
-                  reorder_point_sku)
-                store_d))].
-```
-
-</div>
-</div>
 </div>
 
 ---
@@ -637,7 +555,7 @@ Definition gen_post (sigma : sn_state)
 <span class="text-gray-400">code and hope</span>
 </div>
 
-<div class="text-3xl text-gray-500">$\downarrow$</div>
+<div class="text-3xl text-gray-500">⬇</div>
 
 <div class="border border-green-800 rounded p-4 max-w-lg mx-auto">
 <span class="text-green-300 font-bold">Vericoding leaves</span><br>
@@ -645,10 +563,3 @@ Definition gen_post (sigma : sn_state)
 </div>
 
 </div>
-
-<div class="mt-12 text-center text-sm text-gray-400">
-specsaver · github.com/scidonia/specsaver
-</div>
-
-<style>
-h1 {
