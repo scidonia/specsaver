@@ -243,9 +243,8 @@ reserve_contract = Contract(
 
 <div>
 
-**The commuting diagram.**  The projection `snap` is applied before
-and after execution, yielding pre- and post-SpecState from the same
-function.  Contracts are checked against the pair.
+**The commuting diagram.**  One projection `snap`, applied before
+and after execution.  Contracts compare the pair.
 
 <div class="my-4 p-3 bg-gray-800 rounded text-xs font-mono leading-relaxed">
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;snap<br>
@@ -261,34 +260,66 @@ function.  Contracts are checked against the pair.
 
 <div>
 
-**Two levels, one specification.**
+**Same predicates, two levels.**
 
 <div class="space-y-3 text-xs">
 
 <div class="border-l-2 border-green-400 pl-2">
-<b>Operational.</b> `snap` reads SQLite rows via the engine and
-partitions the event log into typed tuples.  Every Gherkin row
-exercises the contract against real, materialised state.
-Pass/fail is concrete evidence.
+<b>At runtime:</b> the predicates evaluate as Python bool on real
+state — every Gherkin row is a concrete test.
 </div>
 
 <div class="border-l-2 border-purple-400 pl-2">
-<b>Theoretical.</b>  The contract clauses are pure boolean predicates.
-The lowering translates them — and the state schema, frame, and
-invariants — into Coq propositions over an abstract heap model.
-A proof that every obligation closes is a universal guarantee.
-</div>
-
-<div class="border-l-2 border-amber-400 pl-2">
-<b>One specification.</b>  The same predicates are evaluated at runtime
-(operational) and proved in Coq (theoretical).  Symmetry of `snap`
-guarantees both levels reason about the same interpretation of state.
+<b>At proof time:</b> the same predicates are translated to Coq
+propositions over an abstract heap model — every obligation
+proved is a universal guarantee.
 </div>
 
 </div>
 
 </div>
 
+</div>
+
+---
+
+# Symmetry as Bridge
+
+<div class="mt-4 text-sm">
+
+**Why do testing and proving agree?**  Because the state they see is
+produced by the same function.
+
+</div>
+
+<div class="grid grid-cols-3 gap-3 mt-4 text-xs">
+
+<div class="border border-green-800 rounded p-3">
+<div class="text-green-300 font-bold mb-2">Declared schema</div>
+The contract's `state_schema` names every observed field, its type,
+and its provenance.  The runtime snapshot and the Coq state model are
+both derived from this single declaration.
+</div>
+
+<div class="border border-amber-800 rounded p-3">
+<div class="text-amber-300 font-bold mb-2">Semantic frame</div>
+`writes` and `reads` are declarative paths over the schema.
+The runtime checker and the frame-soundness proof enforce the
+same footprint.
+</div>
+
+<div class="border border-purple-800 rounded p-3">
+<div class="text-purple-300 font-bold mb-2">Same snapshot</div>
+One function, called twice.  No divergent "read" and "check" path.
+The frame, derived-consistency, and invariant checkers all operate
+over this shared interpretation.
+</div>
+
+</div>
+
+<div class="mt-6 text-center text-xs text-gray-400">
+The specification is the bridge.  Write it once; test it on data today;
+prove it against the kernel tomorrow.  The lift is automatic.
 </div>
 
 ---
