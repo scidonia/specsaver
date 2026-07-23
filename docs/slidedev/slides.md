@@ -348,26 +348,27 @@ specification state.
 
 **The contract compares those two states.**
 
-<div class="my-4 text-xs text-center">
-<div class="flex items-center justify-center gap-1">
-  <div class="border border-blue-400 rounded px-2 py-1 bg-blue-900/30 w-[90px]">Real DB<br>before</div>
-  <div class="text-gray-400 text-xs">─observe→</div>
-  <div class="border border-green-400 rounded px-2 py-1 bg-green-900/30 w-[90px]">SpecState<br>before</div>
-</div>
-<div class="flex items-center justify-center gap-1 my-0.5">
-  <div class="w-[90px] text-center text-gray-500 text-xs">│ exec</div>
-  <div class="w-[55px]"></div>
-  <div class="w-[90px] text-center text-gray-500 text-xs">│ contract</div>
-</div>
-<div class="flex items-center justify-center gap-1 my-0.5">
-  <div class="w-[90px] text-center text-gray-500 text-xs">↓</div>
-  <div class="w-[55px]"></div>
-  <div class="w-[90px] text-center text-gray-500 text-xs">↓</div>
-</div>
-<div class="flex items-center justify-center gap-1">
-  <div class="border border-blue-400 rounded px-2 py-1 bg-blue-900/30 w-[90px]">Real DB<br>after</div>
-  <div class="text-gray-400 text-xs">─observe→</div>
-  <div class="border border-green-400 rounded px-2 py-1 bg-green-900/30 w-[90px]">SpecState<br>after</div>
+<div class="my-2 text-xs">
+<div class="grid mx-auto" style="width:fit-content; grid-template-columns:90px 55px 90px; row-gap:0">
+  <div class="border border-blue-400 rounded px-1 py-1 bg-blue-900/30 text-center">Real DB<br>before</div>
+  <div class="text-center text-gray-400">─snap→</div>
+  <div class="border border-green-400 rounded px-1 py-1 bg-green-900/30 text-center">SpecState<br>before</div>
+
+  <div class="border-l-2 border-gray-500 ml-[45px] h-[18px]"></div>
+  <div></div>
+  <div class="border-l-2 border-gray-500 ml-[45px] h-[18px]"></div>
+
+  <div class="text-center text-gray-500 text-[10px]">exec</div>
+  <div></div>
+  <div class="text-center text-gray-500 text-[10px]">contract</div>
+
+  <div class="border-l-2 border-gray-500 ml-[45px] h-[18px]"></div>
+  <div></div>
+  <div class="border-l-2 border-gray-500 ml-[45px] h-[18px]"></div>
+
+  <div class="border border-blue-400 rounded px-1 py-1 bg-blue-900/30 text-center">Real DB<br>after</div>
+  <div class="text-center text-gray-400">─snap→</div>
+  <div class="border border-green-400 rounded px-1 py-1 bg-green-900/30 text-center">SpecState<br>after</div>
 </div>
 </div>
 
