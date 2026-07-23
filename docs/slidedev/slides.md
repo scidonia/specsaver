@@ -239,37 +239,58 @@ reserve_contract = Contract(
 
 # Symmetric Projection
 
-<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+<div class="grid grid-cols-2 gap-6 mt-4 text-sm">
 
 <div>
 
-**One function, used twice.**
+**The commuting diagram.**  The same projection `snap` is applied
+before and after execution.  The implementation `exec` mutates the
+concrete context; `snap` projects it into the abstract SpecState
+where contracts are checked.
 
-The projection `snap(ctx) → SpecState` reads the concrete world
-(SQLite DB + event log) into an immutable spec state.  It is called
-*identically* before and after execution — no separate "read" and
-"check" path.
+<div class="my-4 p-3 bg-gray-800 rounded text-xs font-mono leading-relaxed">
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;snap<br>
+  Context &nbsp;─────────────→ &nbsp;SpecState(pre)<br>
+  &nbsp;&nbsp;&nbsp;│<br>
+  &nbsp;&nbsp;&nbsp;│ exec<br>
+  &nbsp;&nbsp;&nbsp;↓<br>
+  Context'&nbsp;─────────────→ &nbsp;SpecState(post)<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;snap<br>
+</div>
+
+<div class="text-xs text-gray-400">
+Contracts compare pre and post.  The service is ordinary SQLAlchemy
+code — it knows nothing about contracts, snapshots, or spec states.
+</div>
 
 </div>
 
 <div>
 
-```mermaid
-graph TD
-    W[Witness] -->|materialize| C[Context]
-    C -->|snap| PRE[SpecState pre]
-    C -->|execute| C2[Context']
-    C2 -->|snap| POST[SpecState post]
-    PRE -.->|"same snap"| POST
-```
+**Two understandings, one function.**
 
+<div class="mt-2 space-y-3 text-xs">
+
+<div class="border-l-2 border-green-400 pl-2">
+<b>Operational.</b>  `snap` reads the concrete world: SQLAlchemy queries
+on the temp SQLite file return row data; the event log yields typed
+event tuples; derived fields are computed as pure aggregations.
+The result is a frozen, comparable SpecState.
+</div>
+
+<div class="border-l-2 border-purple-400 pl-2">
+<b>Theoretical.</b>  Symmetry means `post = f(pre)` for a single `f =
+snap`.  There is no separate "read" and "check" path that could
+diverge.  Every contract clause sees the same schema, the same
+tables, the same event-log partitioning.  The frame checker,
+derived-consistency checker, and invariant checker all operate
+over this shared interpretation.
 </div>
 
 </div>
 
-<div class="mt-4 text-xs text-gray-400">
-Contracts compare pre and post produced by the same projection function.
-The service is ordinary SQLAlchemy code — it knows nothing about specs.
+</div>
+
 </div>
 
 ---
