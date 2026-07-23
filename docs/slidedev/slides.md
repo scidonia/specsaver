@@ -12,6 +12,8 @@ drawings:
 transition: slide-left
 mdc: false
 head: '<style>h1{color:#fbbf24 !important}h2{color:#94a3b8 !important;margin-bottom:0.4em}</style>'
+exportOptions:
+  timeout: 30000
 ---
 
 # Vericoding
@@ -246,14 +248,32 @@ reserve_contract = Contract(
 **The commuting diagram.**  One projection `snap`, applied before
 and after execution.  Contracts compare the pair.
 
-<div class="my-4 p-3 bg-gray-800 rounded text-xs font-mono leading-relaxed">
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;snap<br>
-  Context &nbsp;─────────────→ &nbsp;SpecState(pre)<br>
-  &nbsp;&nbsp;&nbsp;│<br>
-  &nbsp;&nbsp;&nbsp;│ exec<br>
-  &nbsp;&nbsp;&nbsp;↓<br>
-  Context'&nbsp;─────────────→ &nbsp;SpecState(post)<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;snap<br>
+<div class="my-6 flex justify-center">
+<div class="text-center text-xs">
+
+<div class="inline-block border border-gray-500 rounded px-3 py-1 bg-gray-800/60">Witness</div>
+<div class="text-gray-500 my-1">↓ <span class="text-gray-400 text-[10px]">materialize</span></div>
+
+<div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30">Context</div>
+
+<div class="flex gap-8 justify-center my-1">
+  <div class="text-gray-500">↙ <span class="text-blue-300 text-[10px]">snap</span></div>
+  <div class="text-gray-500">↘ <span class="text-orange-300 text-[10px]">exec</span></div>
+</div>
+
+<div class="flex gap-8 justify-center">
+  <div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30">SpecState (pre)</div>
+  <div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30">Context'</div>
+</div>
+
+<div class="flex gap-8 justify-center my-1">
+  <div class="text-green-400 text-sm">same function</div>
+  <div class="text-gray-500">↓ <span class="text-blue-300 text-[10px]">snap</span></div>
+</div>
+
+<div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30">SpecState (post)</div>
+
+</div>
 </div>
 
 </div>
@@ -359,7 +379,7 @@ prove it against the kernel tomorrow.  The lift is automatic.
 
 One object → runners, CLI, conformance suite.
 
-```python {all|3-4|5-7|8-10}
+```python
 inventory = SqlDomain(
     name         = "inventory",
     package      = "examples.inventory",
