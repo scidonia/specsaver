@@ -72,7 +72,9 @@ Generated code is a replaceable implementation detail.
 
 # Two Development Flows
 
-::left::
+<div class="grid grid-cols-2 gap-6 mt-4">
+
+<div>
 
 ## Retrospective
 
@@ -87,7 +89,8 @@ Generated code is a replaceable implementation detail.
 
 </div>
 
-::right::
+</div>
+<div>
 
 ## Contract-First
 
@@ -101,6 +104,9 @@ Generated code is a replaceable implementation detail.
 
 </div>
 
+</div>
+</div>
+
 <div class="mt-6 text-center text-xs text-green-400 font-bold">
 Both converge: the contract is the lasting artifact.<br>
 DISPROVED yields witnesses → back to the dialectic.
@@ -110,7 +116,9 @@ DISPROVED yields witnesses → back to the dialectic.
 
 # Contract Language
 
-::left::
+<div class="grid grid-cols-2 gap-6 mt-4">
+
+<div>
 
 ## The pure terminating fragment of Python
 
@@ -126,7 +134,8 @@ Every clause is a boolean-valued lambda:
 **Static purity check** rejects side effects,
 loops, and non-boolean returns before execution.
 
-::right::
+</div>
+<div>
 
 ## Anatomised as mathematical record
 
@@ -153,7 +162,9 @@ $\mathcal{G}$  —  ghost state
 
 </div>
 
----
+</div>
+</div>
+
 ---
 
 # Semantic Frames
@@ -491,7 +502,9 @@ Token is a caller-supplied argument (args-resolved insert key).
 
 # Verified State
 
-::left::
+<div class="grid grid-cols-2 gap-6 mt-4">
+
+<div>
 
 | Domain | Tables | Ops | Rows | Obligations |
 |--------|--------|-----|------|-------------|
@@ -507,9 +520,8 @@ All four store-obligation contracts fully proved in Rocq.
 Trace obligations (extends_by_one) active in development.
 </div>
 
-::right::
-
-<div class="mt-4 ml-4">
+</div>
+<div>
 
 ```coq
 Definition gen_post (sigma : sn_state)
@@ -538,8 +550,9 @@ Definition gen_post (sigma : sn_state)
 ```
 
 </div>
+</div>
+</div>
 
----
 ---
 
 # The Vericoding Promise
