@@ -348,12 +348,28 @@ specification state.
 
 **The contract compares those two states.**
 
-<div class="my-4 text-xs text-gray-400">
-  Real DB before &nbsp;──observe──→ &nbsp;spec state before<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;│ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;│ run code&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│ check contract<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;↓ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-  Real DB after &nbsp;&nbsp;──observe──→ &nbsp;spec state after
+<div class="my-4 flex justify-center">
+<div class="text-xs font-mono text-center">
+<div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30 w-[130px]">Real DB before</div>
+<span class="mx-1 text-gray-400">──observe──→</span>
+<div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30 w-[130px]">SpecState before</div>
+<br>
+<div class="inline-block w-[130px] text-center text-gray-400 my-1">│</div>
+<div class="w-[220px] inline-block"></div>
+<div class="inline-block w-[130px] text-center text-gray-400 my-1">│</div>
+<br>
+<div class="inline-block w-[130px] text-center text-gray-400 my-1">│</div>
+<div class="w-[110px] inline-block text-gray-400">run code</div>
+<div class="w-[110px] inline-block text-gray-400 text-right">check contract</div>
+<br>
+<div class="inline-block w-[130px] text-center text-gray-400 my-1">↓</div>
+<div class="w-[220px] inline-block"></div>
+<div class="inline-block w-[130px] text-center text-gray-400 my-1">↓</div>
+<br>
+<div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30 w-[130px]">Real DB after</div>
+<span class="mx-1 text-gray-400">──observe──→</span>
+<div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30 w-[130px]">SpecState after</div>
+</div>
 </div>
 
 </div>
