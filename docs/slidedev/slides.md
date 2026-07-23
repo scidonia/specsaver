@@ -109,27 +109,35 @@ different implementations.  The code becomes disposable.
 
 ---
 
-# Running Example: Inventory Reserve
+# Running Example: Feature
 
-<div class="text-xs border-l-2 border-green-400 pl-2 mb-3">
-
-**Feature file (Gherkin):**
+The specification starts as a Gherkin scenario table:
 
 ```
 Scenario: Happy path reservation
   Given a product "S1" with on-hand 100
     reserved 10 and reorder point 20
-  When 30 units are reserved for "O1"
+  When 30 units are reserved for order "O1"
   Then the reserved quantity is now 40
+  And a StockReserved event is emitted
 
 Examples:
   | sku | on_hand | reserved | qty | outcome |
   | S1  | 100     | 10       | 30  | success |
+  | S2  | 50      | 0        | 50  | success |
+  | S4  | 10      | 5        | 6   | error:InsufficientStockError |
 ```
 
+<div class="text-xs text-gray-400 mt-2">
+Each row is a concrete test case.  Axiomander turns each row into
+a temporary SQLite database and typed function arguments.
 </div>
 
-**Implementation (Python):**
+---
+
+# Running Example: Implementation
+
+An ordinary Python function against SQLAlchemy:
 
 ```python
 def reserve(self, engine, sku, order_id, quantity):
