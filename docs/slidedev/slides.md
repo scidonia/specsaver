@@ -248,32 +248,20 @@ reserve_contract = Contract(
 **The commuting diagram.**  One projection `snap`, applied before
 and after execution.  Contracts compare the pair.
 
-<div class="my-6 flex justify-center">
-<div class="text-center text-xs">
-
-<div class="inline-block border border-gray-500 rounded px-3 py-1 bg-gray-800/60">Witness</div>
-<div class="text-gray-500 my-1">↓ <span class="text-gray-400 text-[10px]">materialize</span></div>
-
+<div class="my-4">
 <div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30">Context</div>
-
-<div class="flex gap-8 justify-center my-1">
-  <div class="text-gray-500">↙ <span class="text-blue-300 text-[10px]">snap</span></div>
-  <div class="text-gray-500">↘ <span class="text-orange-300 text-[10px]">exec</span></div>
-</div>
-
-<div class="flex gap-8 justify-center">
-  <div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30">SpecState (pre)</div>
-  <div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30">Context'</div>
-</div>
-
-<div class="flex gap-8 justify-center my-1">
-  <div></div>
-  <div class="text-gray-500">↓ <span class="text-blue-300 text-[10px]">snap</span></div>
-</div>
-
+<span class="mx-1 text-gray-400">&#8594;</span>
+<span class="text-[10px] text-blue-300 mx-0.5">snap</span>
+<span class="mx-1 text-gray-400">&#8594;</span>
+<div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30">SpecState (pre)</div>
+<br>
+<div class="text-center w-[80px] inline-block ml-[75px] text-gray-400">&#8595; <span class="text-[10px] text-orange-300">exec</span></div>
+<br>
+<div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30">Context'</div>
+<span class="mx-1 text-gray-400">&#8594;</span>
+<span class="text-[10px] text-blue-300 mx-0.5">snap</span>
+<span class="mx-1 text-gray-400">&#8594;</span>
 <div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30">SpecState (post)</div>
-
-</div>
 </div>
 
 </div>
