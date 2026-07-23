@@ -170,12 +170,18 @@ C =\; &\langle \Sigma,\; \mathit{args},\; \mathsf{pre},\; \mathsf{post},\\
 \end{aligned}
 $$
 
-<div class="text-sm mt-4 space-y-1">
-<div>$\mathcal{X}$  –  exceptional exits (when + ensures + frame)</div>
-<div>$\mathcal{I}$  –  invariants on every state</div>
-<div>$\mathcal{D}$  –  derived-state definitions</div>
-<div>$\mathcal{W}$ / $\mathcal{R}$  –  semantic frame</div>
-<div>$\mathcal{G}$  –  ghost state</div>
+<div class="text-sm mt-4">
+
+$\mathcal{X}$  —  exceptional exits (when + ensures + frame)
+
+$\mathcal{I}$  —  invariants on every state
+
+$\mathcal{D}$  —  derived-state definitions
+
+$\mathcal{W}$ / $\mathcal{R}$  —  semantic frame
+
+$\mathcal{G}$  —  ghost state
+
 </div>
 
 ---
@@ -463,7 +469,7 @@ $$
 
 <div class="text-sm">
 
-<div class="grid grid-cols-2 gap-6">
+<div>
 <div>
 
 **Invite** (insert frame):
