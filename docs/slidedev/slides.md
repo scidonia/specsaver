@@ -271,11 +271,22 @@ and after execution.  Contracts compare the pair.
 
 <div>
 
-**What snap projects.**  `snap : Context → SpecState` reads the concrete world — SQLAlchemy queries → row dicts, event log → typed tuples, pure aggregation → derived fields — and returns a frozen, comparable, purely functional value.  This lifts raw mutable state into the semantic domain where contracts are stated.
+**Concrete testing.**  `snap` reads the concrete world — SQLAlchemy
+on the temp SQLite file returns raw row data; the event log yields
+typed tuples; derived fields are pure aggregations.  Every Gherkin
+row exercises the contract against real, materialised state.
 
-**Why symmetry matters.**  The diagram commutes: `snap(exec(ctx)) = post`, and the same `snap` produced `pre`.  Without this guarantee, testing (Python bools) and proving (Coq Props) would reason about different interpretations of state.  Symmetry guarantees they see the same thing.
+**Formal verification.**  The lowering translates the contract into
+Coq propositions over a pure heap model — two cells, a store dict
+and a trace dict.  Proofs reason purely about the evolution of
+SpecState: the pre/post predicates, the invariant, the frame.
+No SQLite, no engine, no `snap` — just the abstract theory.
 
-**What it gives us.**  Contracts written once as pure predicates serve double duty: tested on real rows at runtime, lowering to proof obligations over the same declared schema.  The specification is the source of truth at both levels.
+**Symmetry is the bridge.**  Because the same `snap` is used before
+and after execution, the concrete tests and the abstract proofs
+reason about the same interpretation of state.  The commuting
+square guarantees that what the theory predicts is what the
+implementation produces.
 
 </div>
 
