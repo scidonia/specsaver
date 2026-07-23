@@ -71,31 +71,43 @@ Generated code is a replaceable implementation detail.
 
 # The Pipeline
 
-<div class="grid grid-cols-4 gap-2 mt-8">
+<div class="grid grid-cols-4 gap-1 mt-8">
 <div class="bg-blue-900/30 rounded p-3 text-center">
-<span class="text-blue-300 font-bold block">Feature</span>
-<span class="text-xs">Gherkin Rules<br>+ Examples tables</span>
+<span class="text-blue-300 font-bold block text-sm">Feature</span>
+<span class="text-xs">Gherkin Rules<br>+ Examples</span>
 </div>
-<div class="text-2xl self-center text-center">→</div>
-<div class="bg-orange-900/30 rounded p-3 text-center">
-<span class="text-orange-300 font-bold block">Contract</span>
-<span class="text-xs">requires / ensures<br>frames / exits / ghost</span>
+<div class="text-lg self-center text-center">→</div>
+<div class="bg-gray-700/40 rounded p-3 text-center">
+<span class="text-gray-300 font-bold block text-sm">Impl</span>
+<span class="text-xs">write the<br>production code</span>
 </div>
-<div class="text-2xl self-center text-center">→</div>
+<div class="text-lg self-center text-center">→</div>
 <div class="bg-green-900/30 rounded p-3 text-center">
-<span class="text-green-300 font-bold block">Testing</span>
-<span class="text-xs">scenario runner<br>per Examples row</span>
+<span class="text-green-300 font-bold block text-sm">Testing<br><span class="text-xs text-gray-400">(sanity)</span></span>
+<span class="text-xs">make sure it<br>basically works</span>
 </div>
-<div class="text-2xl self-center text-center">→</div>
-<div class="bg-purple-900/30 rounded p-3 text-center">
-<span class="text-purple-300 font-bold block">Lockdown</span>
-<span class="text-xs">Coq obligations<br>FunSpecS proofs</span>
+<div class="text-lg self-center text-center">→</div>
+<div class="bg-orange-900/30 rounded p-3 text-center">
+<span class="text-orange-300 font-bold block text-sm">Contract</span>
+<span class="text-xs">capture observed<br>behaviour in spec</span>
 </div>
 </div>
 
-<div class="mt-8 text-sm text-gray-400">
-Every Examples row is exercised against the contract.
-The same contract lowers to proof obligations.
+<div class="grid grid-cols-3 gap-1 mt-4">
+<div class="text-lg self-center text-center">→</div>
+<div class="bg-orange-900/40 rounded p-3 text-center col-span-2">
+<span class="text-orange-200 font-bold block text-sm">Testing <span class="text-xs text-gray-400">(dialectic)</span></span>
+<span class="text-xs">re-run under contract checking — either contract or implementation<br>is wrong; the two must be reconciled. This is the feedback cycle.</span>
+</div>
+<div class="text-lg text-center">→</div>
+</div>
+
+<div class="grid grid-cols-3 gap-1 mt-4">
+<div class="bg-purple-900/30 rounded p-3 text-center col-span-2">
+<span class="text-purple-300 font-bold block text-sm">Lockdown</span>
+<span class="text-xs">lower to Coq obligations; LLM closes them.<br>DISPROVED may surface witnesses: back to the dialectic.</span>
+</div>
+<div class="text-lg self-center text-center">✓</div>
 </div>
 
 ---
@@ -106,35 +118,33 @@ layout: two-cols
 
 <br>
 
+## Retrospective (the typical path)
+
+<div class="border-l-4 border-yellow-400 pl-4 text-sm mt-2">
+Feature → Implementation → Testing (sanity) → Contract → Testing (dialectic) → Formal Proof
+</div>
+
+<div class="mt-4 text-gray-400 text-sm">
+Write features and code first.  Write contracts capturing observed
+behaviour.  Re-run under contract checking: either the contract or
+the implementation is wrong — the <b>dialectic</b> that requires
+resolution.  Only when both agree do we proceed to formal proof.
+</div>
+
 ## Contract-First
 
-<div class="border-l-4 border-cyan-400 pl-4 text-sm mt-2">
+<div class="border-l-4 border-cyan-400 pl-4 text-sm mt-4">
 Feature → Contract → Implementation → Testing → Formal Proof
 </div>
 
-<div class="mt-6 text-gray-400 text-sm">
-Write features and contracts first.
+<div class="mt-4 text-gray-400 text-sm">
+Write contracts as the acceptance criteria before any code.
 Build the implementation against the specification.
-The contract is the acceptance criteria.
 </div>
 
-::right::
-
-## Retrospective
-
-<div class="border-l-4 border-yellow-400 pl-4 text-sm mt-2">
-Feature → Implementation → Testing → Contract → Testing → Formal Proof
-</div>
-
-<div class="mt-6 text-gray-400 text-sm">
-Start with existing features and code.
-Write contracts that capture observed behaviour.
-Re-run tests under contract checking to validate.
-Proceed to proof.
-</div>
-
-<div class="mt-8 text-center text-sm text-green-400 font-bold">
-Both flows converge on the same long-lived artifact: the contract.
+<div class="mt-6 text-center text-sm text-green-400 font-bold">
+Both flows converge: the contract is the lasting artifact.<br>
+DISPROVED in the proof stage may yield witnesses — back to the dialectic.
 </div>
 
 ---
@@ -584,3 +594,12 @@ Definition gen_post (sigma : sn_state)
 <div class="mt-12 text-center text-sm text-gray-400">
 specsaver · github.com/scidonia/specsaver
 </div>
+
+<style>
+h1 {
+  color: #f59e0b !important;
+}
+h2 {
+  color: #d97706 !important;
+}
+</style>
