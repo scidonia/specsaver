@@ -277,10 +277,11 @@ typed tuples; derived fields are pure aggregations.  Every Gherkin
 row exercises the contract against real, materialised state.
 
 **Formal verification.**  The lowering translates the contract into
-Coq propositions over a pure heap model — two cells, a store dict
-and a trace dict.  Proofs reason purely about the evolution of
-SpecState: the pre/post predicates, the invariant, the frame.
-No SQLite, no engine, no `snap` — just the abstract theory.
+Rocq propositions over an abstract model of SpecState.  Proofs
+reason purely about the evolution of the specification — the
+pre/post predicates, the invariant, the frame.  No SQLite, no
+engine, no `snap` — just the mathematical theory of how SpecState
+may change.
 
 **Symmetry is the bridge.**  Because the same `snap` is used before
 and after execution, the concrete tests and the abstract proofs
@@ -516,9 +517,6 @@ s.available < a.quantity,\;
 $$
 
 </div>
-
----
----
 
 ---
 
