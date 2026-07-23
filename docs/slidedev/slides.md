@@ -1,11 +1,11 @@
 ---
 theme: default
 colorSchema: dark
-title: Specsaver — Durable Specifications for Python
+title: Axiomander — Durable Specifications for Python
 head: '<style>h1{color:#fbbf24 !important}h2{color:#94a3b8 !important;margin-bottom:0.4em}</style>'
 ---
 
-# Specsaver
+# Axiomander
 
 ## Durable specifications for AI-assisted Python development
 
@@ -67,7 +67,7 @@ intent is lost the moment the code changes.
 - AI-assisted rewrites are validated against the spec
 
 <div class="mt-4 border-l-4 border-amber-400 pl-3 text-xs text-amber-300">
-Specsaver creates a <b>specification asset</b> — Gherkin features,
+Axiomander creates a <b>specification asset</b> — Gherkin features,
 contracts, and a domain declaration — that can test and prove many
 different implementations.  The code becomes disposable.
 </div>
@@ -139,7 +139,7 @@ def reserve(self, engine, sku, order_id, quantity):
 ```
 
 <div class="text-xs text-gray-400 mt-2">
-This function knows nothing about Specsaver.  It's ordinary SQLAlchemy
+This function knows nothing about Axiomander.  It's ordinary SQLAlchemy
 with transactions and domain exceptions.
 </div>
 
@@ -258,7 +258,7 @@ A Gherkin row: <span class="text-amber-300">sku=S1, on_hand=100, reserved=10, qu
 writes = {"state.products[sku].reserved"}
 ```
 
-**Specsaver checks that:**
+**Axiomander checks that:**
 
 - `reserved` for the selected product changed correctly
 - `on_hand` for that product is unchanged
@@ -341,7 +341,7 @@ The scenario exposes the disagreement as a concrete failure — a specific row w
 
 <div>
 
-**Before execution,** Specsaver reads the concrete system into a
+**Before execution,** Axiomander reads the concrete system into a
 specification state.
 
 **After execution,** it applies the same observation function again.
@@ -422,7 +422,7 @@ Ordinary mocks simulate library behaviour but have no verified semantics.
 They may silently accept unsupported operations or return different results
 from the real library.
 
-**Specsaver's Approach: Differential Testing**
+**Axiomander's Approach: Differential Testing**
 
 Each library theory (SQLAlchemy, logging, OpenTelemetry) ships with a
 <b>differential fidelity suite</b> — the same program runs against the
@@ -595,12 +595,12 @@ counterexample surfacing from the runner into the scoreboard.
 <div class="text-3xl text-gray-500">⬇</div>
 
 <div class="border border-green-800 rounded p-4 max-w-lg mx-auto">
-<span class="text-green-300 font-bold">With Specsaver</span><br>
+<span class="text-green-300 font-bold">With Axiomander</span><br>
 <span class="text-gray-400">implementation can be replaced; specification, tests, and proof evidence remain</span>
 </div>
 
 </div>
 
 <div class="mt-12 text-center text-sm text-gray-400">
-specsaver · github.com/scidonia/specsaver
+axiomander · github.com/scidonia/axiomander
 </div>
