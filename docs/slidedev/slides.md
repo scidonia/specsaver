@@ -11,6 +11,7 @@ drawings:
   persist: false
 transition: slide-left
 mdc: false
+head: '<style>h1{color:#f59e0b !important}h2{color:#d97706 !important}</style>'
 ---
 
 # Vericoding
@@ -71,80 +72,61 @@ Generated code is a replaceable implementation detail.
 
 # The Pipeline
 
-<div class="grid grid-cols-4 gap-1 mt-8">
-<div class="bg-blue-900/30 rounded p-3 text-center">
-<span class="text-blue-300 font-bold block text-sm">Feature</span>
-<span class="text-xs">Gherkin Rules<br>+ Examples</span>
-</div>
-<div class="text-lg self-center text-center">→</div>
-<div class="bg-gray-700/40 rounded p-3 text-center">
-<span class="text-gray-300 font-bold block text-sm">Impl</span>
-<span class="text-xs">write the<br>production code</span>
-</div>
-<div class="text-lg self-center text-center">→</div>
-<div class="bg-green-900/30 rounded p-3 text-center">
-<span class="text-green-300 font-bold block text-sm">Testing<br><span class="text-xs text-gray-400">(sanity)</span></span>
-<span class="text-xs">make sure it<br>basically works</span>
-</div>
-<div class="text-lg self-center text-center">→</div>
-<div class="bg-orange-900/30 rounded p-3 text-center">
-<span class="text-orange-300 font-bold block text-sm">Contract</span>
-<span class="text-xs">capture observed<br>behaviour in spec</span>
-</div>
-</div>
+<div class="grid grid-cols-[auto_1fr] gap-y-2 gap-x-3 mt-6 text-sm">
 
-<div class="grid grid-cols-3 gap-1 mt-4">
-<div class="text-lg self-center text-center">→</div>
-<div class="bg-orange-900/40 rounded p-3 text-center col-span-2">
-<span class="text-orange-200 font-bold block text-sm">Testing <span class="text-xs text-gray-400">(dialectic)</span></span>
-<span class="text-xs">re-run under contract checking — either contract or implementation<br>is wrong; the two must be reconciled. This is the feedback cycle.</span>
-</div>
-<div class="text-lg text-center">→</div>
-</div>
+<div class="text-amber-400 font-bold text-right">1.</div>
+<div><span class="font-bold">Feature</span> — Gherkin scenario tables define what must work</div>
 
-<div class="grid grid-cols-3 gap-1 mt-4">
-<div class="bg-purple-900/30 rounded p-3 text-center col-span-2">
-<span class="text-purple-300 font-bold block text-sm">Lockdown</span>
-<span class="text-xs">lower to Coq obligations; LLM closes them.<br>DISPROVED may surface witnesses: back to the dialectic.</span>
-</div>
-<div class="text-lg self-center text-center">✓</div>
+<div class="text-amber-400 font-bold text-right">2.</div>
+<div><span class="font-bold">Implementation</span> — write the production code, SQLAlchemy / logging / OTel</div>
+
+<div class="text-amber-400 font-bold text-right">3.</div>
+<div><span class="font-bold">Testing (sanity)</span> — make sure it basically works</div>
+
+<div class="text-amber-400 font-bold text-right">4.</div>
+<div><span class="font-bold">Contract</span> — capture observed behaviour as mathematical spec</div>
+
+<div class="text-amber-400 font-bold text-right">5.</div>
+<div><span class="font-bold">Testing (dialectic)</span> — re-run under contract checking;<br>
+<span class="text-gray-400">either the contract or the implementation is wrong → reconcile</span></div>
+
+<div class="text-amber-400 font-bold text-right">6.</div>
+<div><span class="font-bold">Formal lockdown</span> — lower to Coq, LLM closes obligations;<br>
+<span class="text-gray-400">DISPROVED yields witnesses → back to step 5</span></div>
+
 </div>
 
 ---
 layout: two-cols
 ---
-
 # Two Development Flows
 
 <br>
 
-## Retrospective (the typical path)
-
-<div class="border-l-4 border-yellow-400 pl-4 text-sm mt-2">
-Feature → Implementation → Testing (sanity) → Contract → Testing (dialectic) → Formal Proof
+## Retrospective (typical)
+<div class="border-l-4 border-yellow-400 pl-3 text-sm mt-1">
+Feature → Impl → Testing (sanity) → Contract → Testing (dialectic) → Formal Proof
+</div>
+<div class="text-gray-400 text-xs mt-2">
+Features and code first. Contracts capture observed behaviour.
+Re-run under contract checking: <b>contract or implementation is wrong</b>
+— the dialectic. Only when both agree: formal proof.
 </div>
 
-<div class="mt-4 text-gray-400 text-sm">
-Write features and code first.  Write contracts capturing observed
-behaviour.  Re-run under contract checking: either the contract or
-the implementation is wrong — the <b>dialectic</b> that requires
-resolution.  Only when both agree do we proceed to formal proof.
-</div>
+::right::
 
 ## Contract-First
-
-<div class="border-l-4 border-cyan-400 pl-4 text-sm mt-4">
-Feature → Contract → Implementation → Testing → Formal Proof
+<div class="border-l-4 border-cyan-400 pl-3 text-sm mt-1">
+Feature → Contract → Impl → Testing → Formal Proof
+</div>
+<div class="text-gray-400 text-xs mt-2">
+Contracts as acceptance criteria before code.
+Build implementation against the specification.
 </div>
 
-<div class="mt-4 text-gray-400 text-sm">
-Write contracts as the acceptance criteria before any code.
-Build the implementation against the specification.
-</div>
-
-<div class="mt-6 text-center text-sm text-green-400 font-bold">
-Both flows converge: the contract is the lasting artifact.<br>
-DISPROVED in the proof stage may yield witnesses — back to the dialectic.
+<div class="mt-6 text-center text-xs text-green-400 font-bold">
+Both converge: the contract is the lasting artifact.<br>
+DISPROVED yields witnesses → back to the dialectic.
 </div>
 
 ---
@@ -268,53 +250,65 @@ layout: two-cols
 
 # Symmetric Projection
 
-<div class="text-sm mt-2">
+<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
 
-**snap(ctx) → SpecState** — used twice:
+<div>
 
-<div class="mt-4 space-y-3">
-<div class="bg-green-900/20 rounded p-2">
-<span class="text-green-400 font-bold">Pre-state</span><br>
-snap(context) before execution
-</div>
+**One function, used twice.**
 
-<div class="bg-green-900/20 rounded p-2">
-<span class="text-green-400 font-bold">Post-state</span><br>
-snap(context) after execution
-</div>
-</div>
-
-<div class="mt-6 text-sm text-gray-400">
-Same function, same schema, same interpretation.<br>
-No separate "read" and "check" path.
-</div>
+The projection `snap(ctx) → SpecState` reads the concrete world
+(SQLite DB + event log) into an immutable spec state.  It is called
+*identically* before and after execution — no separate "read" and
+"check" path.
 
 </div>
 
-::right::
+<div>
 
-<div class="text-sm mt-6 space-y-2">
+```mermaid
+graph TD
+    W[Witness] -->|materialize| C[Context]
+    C -->|snap| PRE[SpecState pre]
+    C -->|execute| C2[Context']
+    C2 -->|snap| POST[SpecState post]
+    PRE -.->|"same snap"| POST
+```
 
-### Per Examples row:
+</div>
+
+</div>
+
+<div class="mt-4 text-xs text-gray-400">
+Contracts compare pre and post produced by the same projection function.
+The service is ordinary SQLAlchemy code — it knows nothing about specs.
+</div>
+
+---
+
+# Symmetric Projection — Runner
+
+<div class="grid grid-cols-2 gap-3 mt-4 text-sm">
 
 <div class="space-y-1">
 <div class="text-orange-300">1. materialize</div>
-<div class="text-xs text-gray-400 ml-3">witness → temp SQLite DB</div>
+<div class="text-xs text-gray-400 ml-3">witness → temp SQLite DB + engine + EventLog</div>
 
 <div class="text-orange-300">2. pre-check</div>
-<div class="text-xs text-gray-400 ml-3">invariants + admissibility</div>
+<div class="text-xs text-gray-400 ml-3">invariants on pre-state; admissibility (requires)</div>
 
 <div class="text-orange-300">3. execute</div>
-<div class="text-xs text-gray-400 ml-3">service + effect-emitting wrapper</div>
+<div class="text-xs text-gray-400 ml-3">service runs against real SQLite via SQLAlchemy;<br>wrapper emits typed events into the log</div>
+</div>
 
+<div class="space-y-1">
 <div class="text-orange-300">4. frame check</div>
-<div class="text-xs text-gray-400 ml-3">outside writes unchanged</div>
+<div class="text-xs text-gray-400 ml-3">everything outside writes unchanged</div>
 
 <div class="text-orange-300">5. derived check</div>
-<div class="text-xs text-gray-400 ml-3">derived ≡ recomputed</div>
+<div class="text-xs text-gray-400 ml-3">derived fields ≡ recomputed from observed</div>
 
 <div class="text-orange-300">6. post-check</div>
-<div class="text-xs text-gray-400 ml-3">ensures + invariants</div>
+<div class="text-xs text-gray-400 ml-3">ensures (or exit ensures) for the outcome;<br>invariants on post-state</div>
 </div>
 
 </div>
@@ -597,9 +591,3 @@ specsaver · github.com/scidonia/specsaver
 
 <style>
 h1 {
-  color: #f59e0b !important;
-}
-h2 {
-  color: #d97706 !important;
-}
-</style>
