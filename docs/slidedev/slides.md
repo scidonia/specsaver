@@ -515,8 +515,8 @@ layout: two-cols
 # Verified State
 
 | Domain | Tables | Ops | Rows | Obligations |
-|---|--------|--------|-----|------|-------------|
-| inventory | 1 | 3 | 22 | 6/6 · 6/6 · 4/4 |
+|--------|--------|-----|------|-------------|
+| inventory | 1 | 3 | 22 | 6/6, 6/6, 4/4 |
 | bank_transfer | 2 | 1 | 11 | 7/7 |
 | invitations | 3 | 2 | 9 | runtime-only |
 | **Total** | | **6** | **42** | **23 in 23** |
