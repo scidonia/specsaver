@@ -280,22 +280,11 @@ and after execution.  Contracts compare the pair.
 
 <div>
 
-**Same predicates, two levels.**
+**What snap projects.**  `snap : Context → SpecState` reads the concrete world — SQLAlchemy queries → row dicts, event log → typed tuples, pure aggregation → derived fields — and returns a frozen, comparable, purely functional value.  This lifts raw mutable state into the semantic domain where contracts are stated.
 
-<div class="space-y-3 text-xs">
+**Why symmetry matters.**  The diagram commutes: `snap(exec(ctx)) = post`, and the same `snap` produced `pre`.  Without this guarantee, testing (Python bools) and proving (Coq Props) would reason about different interpretations of state.  Symmetry guarantees they see the same thing.
 
-<div class="border-l-2 border-green-400 pl-2">
-<b>At runtime:</b> the predicates evaluate as Python bool on real
-state — every Gherkin row is a concrete test.
-</div>
-
-<div class="border-l-2 border-purple-400 pl-2">
-<b>At proof time:</b> the same predicates are translated to Coq
-propositions over an abstract heap model — every obligation
-proved is a universal guarantee.
-</div>
-
-</div>
+**What it gives us.**  Contracts written once as pure predicates serve double duty: tested on real rows at runtime, lowering to proof obligations over the same declared schema.  The specification is the source of truth at both levels.
 
 </div>
 
