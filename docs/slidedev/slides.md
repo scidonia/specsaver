@@ -243,10 +243,9 @@ reserve_contract = Contract(
 
 <div>
 
-**The commuting diagram.**  The same projection `snap` is applied
-before and after execution.  The implementation `exec` mutates the
-concrete context; `snap` projects it into the abstract SpecState
-where contracts are checked.
+**The commuting diagram.**  The projection `snap` is applied before
+and after execution, yielding pre- and post-SpecState from the same
+function.  Contracts are checked against the pair.
 
 <div class="my-4 p-3 bg-gray-800 rounded text-xs font-mono leading-relaxed">
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;snap<br>
@@ -258,33 +257,32 @@ where contracts are checked.
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;snap<br>
 </div>
 
-<div class="text-xs text-gray-400">
-Contracts compare pre and post.  The service is ordinary SQLAlchemy
-code — it knows nothing about contracts, snapshots, or spec states.
-</div>
-
 </div>
 
 <div>
 
-**Two understandings, one function.**
+**Two levels, one specification.**
 
-<div class="mt-2 space-y-3 text-xs">
+<div class="space-y-3 text-xs">
 
 <div class="border-l-2 border-green-400 pl-2">
-<b>Operational.</b>  `snap` reads the concrete world: SQLAlchemy queries
-on the temp SQLite file return row data; the event log yields typed
-event tuples; derived fields are computed as pure aggregations.
-The result is a frozen, comparable SpecState.
+<b>Operational.</b> `snap` reads SQLite rows via the engine and
+partitions the event log into typed tuples.  Every Gherkin row
+exercises the contract against real, materialised state.
+Pass/fail is concrete evidence.
 </div>
 
 <div class="border-l-2 border-purple-400 pl-2">
-<b>Theoretical.</b>  Symmetry means `post = f(pre)` for a single `f =
-snap`.  There is no separate "read" and "check" path that could
-diverge.  Every contract clause sees the same schema, the same
-tables, the same event-log partitioning.  The frame checker,
-derived-consistency checker, and invariant checker all operate
-over this shared interpretation.
+<b>Theoretical.</b>  The contract clauses are pure boolean predicates.
+The lowering translates them — and the state schema, frame, and
+invariants — into Coq propositions over an abstract heap model.
+A proof that every obligation closes is a universal guarantee.
+</div>
+
+<div class="border-l-2 border-amber-400 pl-2">
+<b>One specification.</b>  The same predicates are evaluated at runtime
+(operational) and proved in Coq (theoretical).  Symmetry of `snap`
+guarantees both levels reason about the same interpretation of state.
 </div>
 
 </div>
