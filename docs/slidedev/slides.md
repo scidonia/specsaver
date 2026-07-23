@@ -351,7 +351,7 @@ specification state.
 <div class="my-2 text-xs">
 <div class="grid mx-auto" style="width:fit-content; grid-template-columns:90px 55px 90px; row-gap:0">
   <div class="border border-blue-400 rounded px-1 py-1 bg-blue-900/30 text-center">Real DB<br>before</div>
-  <div class="text-center text-gray-400">─snap→</div>
+  <div class="text-center text-gray-400">&rarr; snap</div>
   <div class="border border-green-400 rounded px-1 py-1 bg-green-900/30 text-center">SpecState<br>before</div>
 
   <div class="border-l-2 border-gray-500 ml-[45px] h-[18px]"></div>
@@ -366,12 +366,12 @@ specification state.
   <div></div>
   <div class="border-l-2 border-gray-500 ml-[45px] h-[14px]"></div>
 
-  <div class="text-center text-gray-400 text-sm">▼</div>
+  <div class="text-center text-gray-400 text-sm">&darr;</div>
   <div></div>
-  <div class="text-center text-gray-400 text-sm">▼</div>
+  <div class="text-center text-gray-400 text-sm">&darr;</div>
 
   <div class="border border-blue-400 rounded px-1 py-1 bg-blue-900/30 text-center">Real DB<br>after</div>
-  <div class="text-center text-gray-400">─snap→</div>
+  <div class="text-center text-gray-400">&rarr; snap</div>
   <div class="border border-green-400 rounded px-1 py-1 bg-green-900/30 text-center">SpecState<br>after</div>
 </div>
 </div>
@@ -453,7 +453,7 @@ Operations interpreted over a pure, inspectable state model — not a mock.
 <div class="text-sm">
 
 ```text
-Python contract ──→ mathematical propositions ──→ Rocq proof kernel ──→ verdict
+Python contract &rarr; mathematical propositions &rarr; Rocq proof kernel &rarr; verdict
 ```
 
 <div class="grid grid-cols-3 gap-4 mt-6">
