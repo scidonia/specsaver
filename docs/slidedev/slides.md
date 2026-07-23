@@ -167,69 +167,72 @@ $\mathcal{G}$  —  ghost state
 
 ---
 
-# Semantic Frames
+# Contract Anatomy: Implementation
 
-Declare **what you write**, not what you don't.
-
-<div class="grid grid-cols-2 gap-4 mt-6">
-<div class="bg-gray-800 rounded p-4">
-
-### Write paths
+A simple inventory reserve function against SQLAlchemy:
 
 ```python
-writes = {
-    "state.products[sku].reserved",
-    "state.invitations[token]",
-    "state.reservation_log",
-}
+def reserve(self, engine, sku, order_id, quantity):
+    with engine.begin() as conn:
+        row = conn.execute(
+            text("SELECT on_hand, reserved FROM products"
+                 " WHERE sku = :sku"), {"sku": sku}
+        ).fetchone()
+
+        if row is None: raise ProductNotFoundError(sku)
+
+        on_hand, reserved = row
+        available = on_hand - reserved
+
+        if available < quantity:
+            raise InsufficientStockError(sku, quantity, available)
+
+        conn.execute(
+            text("UPDATE products SET reserved = reserved + :qty"
+                 " WHERE sku = :sku"),
+            {"qty": quantity, "sku": sku},
+        )
+
+    return ReservationReceipt(sku=sku, quantity=quantity)
 ```
 
-</div>
-<div class="bg-gray-800 rounded p-4">
-
-### Derived obligations
-
-<div class="text-sm space-y-2 mt-2">
-<div class="text-green-400">✓</div> Every other keyed attribute unchanged
-<div class="text-green-400">✓</div> Every other keyed row untouched
-<div class="text-green-400">✓</div> All other event channels silent
-<div class="text-green-400">✓</div> Deletions always rejected
-<div class="text-green-400">✓</div> Keyed-row inserts allowed for args-resolved keys
-</div>
-</div>
-</div>
-
-<div class="mt-4 text-sm text-gray-400">
-The checker derives frame soundness from write paths alone.
-No "everything else unchanged" clauses needed.
+<div class="text-xs text-gray-400 mt-2">
+The function knows nothing about contracts or specsaver.
+It's ordinary SQLAlchemy code with transactions and domain exceptions.
 </div>
 
 ---
----
 
-# Exception Exits
+# Contract Anatomy: Specification
 
-Exceptions are **data**, not control flow.
+The same operation, specified once:
 
-```python {all|3-6|7|8-11}
-exceptions = [
-    ExcExit(
-        raises = InsufficientStockError,
-        when   = [lambda s, a:
-                   s.products[a.sku].on_hand
-                 - s.products[a.sku].reserved < a.quantity],
-        writes = {"state.failure_log"},
-        ensures = [lambda s, a, e, s':
-                    extends_by_one(
-                       s.failure_log, s'.failure_log,
-                       λf. f.sku == a.sku
-                           ∧ f.reason == e.code)]
-    )
-]
+```python
+reserve_contract = Contract(
+    requires=[
+        lambda s, a: a.quantity > 0,
+        lambda s, a: a.sku in s.observed.products,
+    ],
+    ensures=[
+        lambda s, a, r, s2: (
+            s2.products[a.sku].reserved == s.products[a.sku].reserved + a.quantity),
+    ],
+    exceptions=[
+        ExcExit(raises=InsufficientStockError,
+                when=[lambda s, a:
+                    s.products[a.sku].on_hand - s.products[a.sku].reserved < a.quantity],
+                writes={"state.failure_log"}),
+    ],
+    writes={"state.products[sku].reserved", "state.failure_log"},
+    reads={"state.products[sku].on_hand", "state.products[sku].reserved"},
+)
 ```
 
-<div class="text-sm text-gray-400 mt-4">
-The runner checks: correct exception raised, failure telemetry contains exactly one new event with exact fields, nothing outside the exit's writes changed.
+<div class="grid grid-cols-4 gap-2 mt-4 text-xs">
+<div class="border-l-2 border-blue-400 pl-2"> <b>requires</b><br>admissibility </div>
+<div class="border-l-2 border-green-400 pl-2"> <b>ensures</b><br>what changes </div>
+<div class="border-l-2 border-red-400 pl-2"> <b>exceptions</b><br>when + outcome </div>
+<div class="border-l-2 border-yellow-400 pl-2"> <b>writes/reads</b><br>semantic frame </div>
 </div>
 
 ---
