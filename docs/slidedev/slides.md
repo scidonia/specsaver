@@ -348,42 +348,26 @@ specification state.
 
 **The contract compares those two states.**
 
-<div class="my-4 flex justify-center">
-<div class="text-xs">
-
-<div class="flex items-center justify-center gap-3">
-  <div class="border border-blue-400 rounded px-3 py-1 bg-blue-900/30 text-center w-[120px]">Real DB<br>before</div>
-  <div class="text-gray-400 text-lg">──────</div>
-  <div class="text-gray-500 text-[10px]">observe<br>(snap)</div>
-  <div class="text-gray-400 text-lg">──────→</div>
-  <div class="border border-green-400 rounded px-3 py-1 bg-green-900/30 text-center w-[120px]">SpecState<br>before</div>
+<div class="my-4 text-xs text-center">
+<div class="flex items-center justify-center gap-1">
+  <div class="border border-blue-400 rounded px-2 py-1 bg-blue-900/30 w-[90px]">Real DB<br>before</div>
+  <div class="text-gray-400 text-xs">─observe→</div>
+  <div class="border border-green-400 rounded px-2 py-1 bg-green-900/30 w-[90px]">SpecState<br>before</div>
 </div>
-
-<div class="flex items-center justify-center gap-3 mt-1">
-  <div class="w-[120px] text-center text-gray-400 text-lg">│</div>
-  <div class="w-[70px]"></div>
-  <div class="text-[10px] text-orange-300 w-[80px] text-center">execution<br>(the real thing)</div>
-  <div class="w-[70px]"></div>
-  <div class="w-[120px] text-center text-gray-400 text-lg">│</div>
-  <div class="text-[10px] text-purple-300">contract<br>(what must hold)</div>
+<div class="flex items-center justify-center gap-1 my-0.5">
+  <div class="w-[90px] text-center text-gray-500 text-xs">│ exec</div>
+  <div class="w-[55px]"></div>
+  <div class="w-[90px] text-center text-gray-500 text-xs">│ contract</div>
 </div>
-
-<div class="flex items-center justify-center gap-3 mt-1">
-  <div class="w-[120px] text-center text-gray-400 text-lg">↓</div>
-  <div class="w-[70px]"></div>
-  <div class="w-[80px]"></div>
-  <div class="w-[70px]"></div>
-  <div class="w-[120px] text-center text-gray-400 text-lg">↓</div>
+<div class="flex items-center justify-center gap-1 my-0.5">
+  <div class="w-[90px] text-center text-gray-500 text-xs">↓</div>
+  <div class="w-[55px]"></div>
+  <div class="w-[90px] text-center text-gray-500 text-xs">↓</div>
 </div>
-
-<div class="flex items-center justify-center gap-3 mt-1">
-  <div class="border border-blue-400 rounded px-3 py-1 bg-blue-900/30 text-center w-[120px]">Real DB<br>after</div>
-  <div class="text-gray-400 text-lg">──────</div>
-  <div class="text-gray-500 text-[10px]">observe<br>(snap)</div>
-  <div class="text-gray-400 text-lg">──────→</div>
-  <div class="border border-green-400 rounded px-3 py-1 bg-green-900/30 text-center w-[120px]">SpecState<br>after</div>
-</div>
-
+<div class="flex items-center justify-center gap-1">
+  <div class="border border-blue-400 rounded px-2 py-1 bg-blue-900/30 w-[90px]">Real DB<br>after</div>
+  <div class="text-gray-400 text-xs">─observe→</div>
+  <div class="border border-green-400 rounded px-2 py-1 bg-green-900/30 w-[90px]">SpecState<br>after</div>
 </div>
 </div>
 
