@@ -250,18 +250,21 @@ and after execution.  Contracts compare the pair.
 
 <div class="my-4">
 <div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30">Context</div>
-<span class="mx-1 text-gray-400">&#8594;</span>
-<span class="text-[10px] text-blue-300 mx-0.5">snap</span>
-<span class="mx-1 text-gray-400">&#8594;</span>
+<span class="mx-1 text-gray-400">—</span>
+<span class="text-[10px] text-blue-300">snap</span>
+<span class="mx-1 text-gray-400">→</span>
 <div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30">SpecState (pre)</div>
+<div class="inline-block ml-6"></div>
 <br>
-<div class="text-center w-[80px] inline-block ml-[75px] text-gray-400">&#8595; <span class="text-[10px] text-orange-300">exec</span></div>
+<div class="ml-9 inline-block mr-2 text-gray-400">↓ <span class="text-[10px] text-orange-300">exec</span></div>
+<div class="ml-[12.5em] inline-block text-gray-400">↓ <span class="text-[10px] text-purple-300">contract</span></div>
 <br>
 <div class="inline-block border border-blue-400 rounded px-3 py-1 bg-blue-900/30">Context'</div>
-<span class="mx-1 text-gray-400">&#8594;</span>
-<span class="text-[10px] text-blue-300 mx-0.5">snap</span>
-<span class="mx-1 text-gray-400">&#8594;</span>
+<span class="mx-1 text-gray-400">—</span>
+<span class="text-[10px] text-blue-300">snap</span>
+<span class="mx-1 text-gray-400">→</span>
 <div class="inline-block border border-green-400 rounded px-3 py-1 bg-green-900/30">SpecState (post)</div>
+<div class="ml-4 text-[10px] text-gray-500 inline-block">same snap</div>
 </div>
 
 </div>
