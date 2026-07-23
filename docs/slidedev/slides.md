@@ -11,7 +11,7 @@ drawings:
   persist: false
 transition: slide-left
 mdc: false
-head: '<style>h1{color:#fbbf24 !important}h2{color:#94a3b8 !important}</style>'
+head: '<style>h1{color:#fbbf24 !important}h2{color:#94a3b8 !important;margin-bottom:0.4em}</style>'
 ---
 
 # Vericoding
