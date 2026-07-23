@@ -295,47 +295,6 @@ implementation produces.
 
 ---
 
-# Symmetry as Bridge
-
-<div class="mt-4 text-sm">
-
-**Why do testing and proving agree?**  Because the state they see is
-produced by the same function.
-
-</div>
-
-<div class="grid grid-cols-3 gap-3 mt-4 text-xs">
-
-<div class="border border-green-800 rounded p-3">
-<div class="text-green-300 font-bold mb-2">Declared schema</div>
-The contract's `state_schema` names every observed field, its type,
-and its provenance.  The runtime snapshot and the Coq state model are
-both derived from this single declaration.
-</div>
-
-<div class="border border-amber-800 rounded p-3">
-<div class="text-amber-300 font-bold mb-2">Semantic frame</div>
-`writes` and `reads` are declarative paths over the schema.
-The runtime checker and the frame-soundness proof enforce the
-same footprint.
-</div>
-
-<div class="border border-purple-800 rounded p-3">
-<div class="text-purple-300 font-bold mb-2">Same snapshot</div>
-One function, called twice.  No divergent "read" and "check" path.
-The frame, derived-consistency, and invariant checkers all operate
-over this shared interpretation.
-</div>
-
-</div>
-
-<div class="mt-6 text-center text-xs text-gray-400">
-The specification is the bridge.  Write it once; test it on data today;
-prove it against the kernel tomorrow.  The lift is automatic.
-</div>
-
----
-
 # Symmetric Projection — Runner
 
 <div class="grid grid-cols-2 gap-6 mt-6">
