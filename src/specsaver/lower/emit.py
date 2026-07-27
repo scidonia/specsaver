@@ -791,7 +791,9 @@ def _dependency_layers(info: ContractInfo) -> dict[int, list[tuple[str, str]]]:
     layer1 = [("o2_spec_consistency", _o2(info))]
     layer1.extend(
         (f"o3_{i}_exception_consistency", o3)
-        for i, o3 in enumerate(_o3s(info, arms).split("\n\n") if _o3s(info, arms) else [])
+        for i, o3 in enumerate(
+            _o3s(info, arms).split("\n\n") if _o3s(info, arms) else []
+        )
     )
     layers[1] = layer1
     l3 = [("store_inv_lookup", _store_inv_lookup())]
@@ -885,7 +887,7 @@ End gen_{info.name}_L{layer_num}."""
     # Emit _CoqProject
     project_lines = [
         f"{info.name}_defs.v",
-    ] + [layer_files[str(l)] for l in sorted(layer_files)]
+    ] + [layer_files[str(layer)] for layer in sorted(layer_files)]
     (base / "_CoqProject").write_text("\n".join(project_lines) + "\n")
 
     # Emit schedule.json
