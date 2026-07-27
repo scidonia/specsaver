@@ -1,8 +1,13 @@
 """Generate proof obligations for a contract and score them.
 
 Usage:
-  PYTHONPATH=src:. uv run python scripts/gen_obligations.py \
-      examples.inventory.contract reserve_contract \
+  PYTHONPATH=src:. uv run python scripts/gen_obligations.py \\
+      examples.inventory.contract reserve_contract \\
+      examples.inventory.types Product products sku
+
+  PYTHONPATH=src:. uv run python scripts/gen_obligations.py \\
+      --layered \\
+      examples.inventory.contract reserve_contract \\
       examples.inventory.types Product products sku
 """
 
@@ -12,15 +17,22 @@ import importlib
 import sys
 from pathlib import Path
 
-from specsaver.lower.emit import emit_contract
+from specsaver.lower.emit import emit_contract, emit_layered
 from specsaver.lower.harness import score
 from specsaver.lower.introspect import introspect_contract
 
 
 def main() -> int:
-    module_name, contract_name, types_name, row_name, map_field, key_arg = (
-        sys.argv[1:7]
-    )
+    args = sys.argv[1:]
+    layered = False
+    if args and args[0] == "--layered":
+        layered = True
+        args = args[1:]
+    if len(args) < 6:
+        print("usage: gen_obligations.py [--layered] <module> <contract> "
+              "<types_module> <row_type> <map_field> <key_arg>")
+        return 1
+    module_name, contract_name, types_name, row_name, map_field, key_arg = args[:6]
     contract = getattr(importlib.import_module(module_name), contract_name)
     row_type = getattr(importlib.import_module(types_name), row_name)
 
@@ -32,17 +44,29 @@ def main() -> int:
           f"exits={[e.name for e in info.exits]}")
 
     source = f"{module_name}:{contract_name}"
-    text = emit_contract(info, source)
 
-    out_dir = Path("coq/gen")
-    out_dir.mkdir(exist_ok=True)
-    out = out_dir / f"Gen{info.name.capitalize()}Obligations.v"
-    out.write_text(text)
-    print(f"emitted {out}")
-
-    board = score(out)
-    print(board.report())
-    unknown = [n for n, s in board.results.items() if s != "PROVED"]
+    if layered:
+        out_dir = Path("coq/gen") / info.name
+        emit_layered(info, source, str(out_dir))
+        print(f"emitted layered to {out_dir}/")
+        # Score the definitions file (which proves the structural lemmas)
+        defs = out_dir / f"{info.name}_defs.v"
+        if defs.exists():
+            board = score(defs)
+            print(f"scoreboard (defs):\n{board.report()}")
+        else:
+            print("no defs file found")
+        unknown = 0
+    else:
+        text = emit_contract(info, source)
+        out_dir = Path("coq/gen")
+        out_dir.mkdir(exist_ok=True)
+        out = out_dir / f"Gen{info.name.capitalize()}Obligations.v"
+        out.write_text(text)
+        print(f"emitted {out}")
+        board = score(out)
+        print(board.report())
+        unknown = [n for n, s in board.results.items() if s != "PROVED"]
     return 1 if unknown else 0
 
 
