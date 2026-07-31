@@ -224,46 +224,74 @@ one spec, three levels of assurance.}
 \section{Scientific Contributions}\label{sec:contributions}
 %=====================================================================
 
-\begin{enumerate}[label=\textbf{C\arabic*}]
-\item \textbf{Contracts as semantic intermediate representation.}
-  We show that a single declarative contract, written in a restricted
-  fragment of Python, serves simultaneously as: an executable test
-  oracle over Gherkin scenario data; a generator of semantic frame
-  and derived-consistency checks; and the source representation from
-  which machine-checked proof obligations are lowered.
+The central thesis of this paper --- that a single declarative
+contract can drive testing, runtime checking, and machine-checked
+proof --- is a realisation of the classical design-by-contract thesis
+\cite{Meyer92,Leino10}, not a new idea in itself.  Spec\#, Dafny, and
+JML all pursue variants of this thesis.  Our contributions lie in the
+specific engineering that makes the thesis practical for Python
+database services, and in three mechanisms with no direct prior art
+at this granularity.
 
-\item \textbf{Semantic frame inference.}
-  Rather than requiring explicit ``everything else unchanged''
-  clauses, declarative write paths over keyed rows, keyed attributes,
-  and event channels generate the complement automatically.  The
-  checker derives frame soundness from write paths alone.
+\subsection{Differentially validated library theories}
+\label{sec:contrib-theories}
 
-\item \textbf{Differentially validated library theories.}
-  We define a \emph{theory} as a layered operational model of a
-  library's covered fragment: action model, event model, state model,
-  stub handler, shim adapter, and differential fidelity suite.
-  Theories for SQL (SQLAlchemy), logging, and OpenTelemetry are
-  built and validated against their real counterparts.
+The most distinctive mechanism is the \emph{theory}: a stub for a
+real library (SQLAlchemy, Python logging, OpenTelemetry) that is
+given an explicit operational semantics over a pure state model, and
+that is \emph{differentially validated} against the real library.
+The same programs are executed against both the stub and the real
+library, and their observable outputs must agree on the covered
+fragment; anything outside the fragment is rejected loudly rather
+than silently approximated.  Differential testing is an old technique
+\cite{McKeeman98}, but giving stubs formal semantics and then
+validating them against production libraries at this granularity is,
+to our knowledge, new.  It replaces the pervasive but unprincipled
+use of mocks with a conformance regime that is itself checkable.
 
-\item \textbf{Symmetric projection architecture.}
-  The projection from concrete execution state (SQLite file + event
-  log) to abstract specification state is a single function applied
-  identically before and after execution, guaranteeing that pre- and
-  post-state are comparable under the same interpretation.
+\subsection{Automatic lowering from Python contracts to Rocq}
+\label{sec:contrib-lowering}
 
-\item \textbf{Automatic lowering from executable contracts to Rocq.}
-  A shape-extracting introspector analyses the Python AST of each
-  contract clause; a shape-driven emitter produces a Rocq obligation
-  file targeting a hand-verified WP calculus; a proof harness compiles
-  and bisects per obligation.  All four example contracts' store
-  obligations are machine-proved.
+The lowering pipeline --- Python lambdas $\to$ AST introspection
+$\to$ shape extraction $\to$ Rocq obligation generation over a
+hand-verified WP calculus --- is a novel engineering combination.
+Why3 extracts to Coq, but from a dedicated specification language
+\cite{Filliatre13}; Spec\# uses Boogie \cite{Leino10}; Frama-C has
+its own WP but not Coq back-ends for Python.  Our pipeline takes
+contracts written in a restricted fragment of Python and lowers them
+into a small imperative language with exceptions (\textsc{SnakeletExn}
+--- HeapLang extended with first-class exceptions, following
+\cite{VanCollem2026}), emitting FunSpecS-style obligation files with
+an automatically proven totality lemma, invariant-preservation lemma,
+and frame-soundness lemma.  The dependency-layered emission for
+parallel proof generation (\cref{sec:lowering}) is likewise novel.
 
-\item \textbf{Declarative domain specification.}
-  A single \texttt{SqlDomain} object collapses per-domain
-  infrastructure (materialiser, projection, cleanup, runner wiring,
-  test dispatch) into one declaration, reducing a new verification
-  unit to its irreducible content.
-\end{enumerate}
+\subsection{Semantic frame discipline with insertion}
+\label{sec:contrib-frames}
+
+Frame conditions are old.  Eiffel has explicit modifies clauses
+\cite{Meyer92}; Frama-C has \texttt{assigns}; Dafny has
+\texttt{modifies}.  Our frame system is an engineering refinement:
+declarative write paths (keyed-row, keyed-attribute, event-channel)
+generate the complement automatically, eliminating the
+``everything else unchanged'' boilerplate that dominates classical
+DbC specifications.  The keyed-row \emph{insert} discipline ---
+keyed-row write paths may add the args-resolved key, while deletion
+is always rejected --- is a specific rule we have not seen elsewhere.
+Event-channel frames, covering structured telemetry as first-class
+frame-citizens, are likewise distinctive.
+
+\subsection{Positioning of other machinery}
+\label{sec:contrib-positioning}
+
+The symmetric projection --- one observation function applied before
+and after execution --- is standard practice in program verification
+\cite{Cousot77}, not a contribution; we use it because it is the
+correct discipline.  The declarative \texttt{SqlDomain} specification
+that collapses per-domain infrastructure is an engineering ergonomic,
+not a scientific contribution.  The contract language itself ---
+pure, boolean-valued Python predicates --- is a design choice
+motivated by Python familiarity, not a formal advance.
 
 %=====================================================================
 \section{Formal Model}\label{sec:model}
@@ -1113,11 +1141,21 @@ Jeremy Tobin-Hochstadt and Matthias Felleisen.
 \textit{The Design and Implementation of Typed Scheme}.
 In POPL 2008.
 
-\bibitem{AbstractInterpretation}
+\bibitem{Cousot77}
 Patrick Cousot and Radhia Cousot.
 \textit{Abstract Interpretation: A Unified Lattice Model for
 Static Analysis of Programs by Construction or Approximation
 of Fixpoints}.  In POPL 1977.
+
+\bibitem{McKeeman98}
+William McKeeman.
+\textit{Differential Testing for Software}.
+Digital Technical Journal, 10(1):100--107, 1998.
+
+\bibitem{Filliatre13}
+Jean-Christophe Filli\^atre.
+\textit{Why3: A Platform for Deductive Program Verification}.
+In CAV 2013.
 
 \end{thebibliography}
 
