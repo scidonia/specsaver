@@ -908,11 +908,18 @@ End gen_{info.name}_L{layer_num}."""
     (base / "_skill.md").write_text("""# Iris / gmap / stdpp Proof Patterns
 
 ## decide opacity
-`rewrite lookup_insert` introduces `if decide (k = k) then ...`. The `decide` typeclass from stdpp is opaque at Qed time — `destruct (decide (k = k))` produces a kernel-rejected proof term. Always use `rewrite decide_True; reflexivity` or `apply lookup_insert_eq` instead.
+`rewrite lookup_insert` introduces `if decide (k = k) then ...`.
+The `decide` typeclass from stdpp is opaque at Qed time —
+`destruct (decide (k = k))` produces a kernel-rejected proof term.
+Always use `rewrite decide_True; reflexivity` or
+apply lookup_insert_eq instead.
+
 
 ## gmap singletons — CRITICAL
 
-**NEVER use `set`, `pose`, or `refine` for the sigma witness.** They make the map opaque to the kernel — coq-lsp will accept the proof but coqc rejects it. Always provide sigma directly inside `exists`:
+**NEVER use `set`, `pose`, or `refine` for the sigma witness.**
+They make the map opaque to the kernel — coq-lsp will accept the proof
+but coqc rejects it. Always provide sigma directly inside `exists`:
 
 ```coq
 (* CORRECT — works with both coq-lsp and coqc *)
@@ -928,25 +935,41 @@ set (sigma := {[store_loc := ...]}).  (* opaque to kernel *)
 unfold sigma. ... reflexivity.         (* coqc can't unify *)
 ```
 
-The `exists` must receive the map literal directly so the kernel sees a concrete value, not a named definition. `apply lookup_insert_eq` for same-key lookup. For multi-key: first key uses `lookup_insert_eq`, subsequent keys use `rewrite lookup_insert_ne; [exact ... | congruence]`.
+The `exists` must receive the map literal directly so the kernel sees a
+concrete value, not a named definition. `apply lookup_insert_eq` for
+same-key lookup. For multi-key: first key uses `lookup_insert_eq`,
+subsequent keys use `rewrite lookup_insert_ne; [exact ... | congruence]`.
+
 
 ## gen_table_total
-The shared defs file exports `gen_table_total` — one lemma for all spec-consistency proofs: if `gen_table f = Some (FunSpecS pre post)` and `pre sigma vs`, then `exists r ups, post sigma vs r ups /\\ updates_dom_in sigma ups`. Use `eapply (gen_table_total "fn" pre post vs sigma eq_refl Hpre)`. Function names match `gen_table` dispatch keys (the contract name for success, `<name>_exc<i>` for exception arms).
+The shared defs file exports `gen_table_total` — one lemma for all
+spec-consistency proofs: if `gen_table f = Some (FunSpecS pre post)`
+and `pre sigma vs`, then
+`exists r ups, post sigma vs r ups /\\ updates_dom_in sigma ups`.
+Use `eapply (gen_table_total "fn" pre post vs sigma eq_refl Hpre)`.
+Function names match `gen_table` dispatch keys.
 
 ## updates_dom_in / Forall
-`unfold updates_dom_in. constructor.` when ups = []. For singleton ups: `unfold updates_dom_in; simpl; split; [rewrite Hlookup; eauto | constructor]`.
+`unfold updates_dom_in. constructor.` when ups = [].
+For singleton ups: `unfold updates_dom_in; simpl; split;
+[rewrite Hlookup; eauto | constructor]`.
+
 
 ## store_inv
-`store_inv [(_, v)]` simplifies to `row_inv v /\\ True`. Use `unfold store_inv; simpl; split; [| exact I]`.
+`store_inv [(_, v)]` simplifies to `row_inv v /\\ True`.
+Use `unfold store_inv; simpl; split; [| exact I]`.
 
 ## dict_lookup_str
-`simpl` reduces matching-key lookups — `String.eqb k k` reduces to `true`. Use `simpl; reflexivity`.
+`simpl` reduces matching-key lookups — `String.eqb k k` reduces to `true`.
+Use `simpl; reflexivity`.
 
 ## row_inv
-Unfold to existential over row fields. Provide witnesses and use `repeat split; lia` for constraints.
+Unfold to existential over row fields.
+Provide witnesses and use `repeat split; lia` for constraints.
 
 ## Witness construction for admissibility
-Use `{[store_loc := LitDict [...]; trace_loc := LitList []]}` for the sigma witness. The `store_loc` and `trace_loc` names are defined in the shared defs file.
+Use `{[store_loc := LitDict [...]; trace_loc := LitList []]}` for the
+sigma witness. `store_loc`/`trace_loc` come from the shared defs file.
 
 ## Generic structure
 - L0: admissibility + exit coverage
@@ -992,7 +1015,7 @@ induction store_d as [|kv rest IH]; intros Hlook Hrow Hpos Hge Hinv; simpl in *.
 ```
 """)
 
-    # Emit bench_spec.json — full spec with compile deps, prove phases, and suite tagging.
+    # Emit bench_spec.json — compile deps, prove phases, suite tagging.
     suite = source.split(":")[0].split(".")[1] if ":" in source else source
     sorted_layers = sorted(layers.keys())
     bench_spec = {
@@ -1014,3 +1037,18 @@ induction store_d as [|kv rest IH]; intros Hlook Hrow Hpos Hge Hinv; simpl in *.
         },
     }
     (base / "bench_spec.json").write_text(json.dumps(bench_spec, indent=2) + "\n")
+
+    # Emit schedule.json — parallel execution DAG (phases = [L0+L2, L1+L3])
+    n_layers = len(sorted_layers)
+    phases = []
+    if n_layers >= 2:
+        phase1 = [f"{info.name}_L{i}.v" for i in (0, 2) if i in layers]
+        phase2 = [f"{info.name}_L{i}.v" for i in (1, 3) if i in layers]
+        phases = [
+            {"files": phase1, "maxParallel": len(phase1)},
+            {"files": phase2, "maxParallel": len(phase2)},
+        ]
+    (base / "schedule.json").write_text(json.dumps({
+        "contract": info.name,
+        "phases": phases,
+    }, indent=2) + "\n")
