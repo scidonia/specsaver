@@ -243,10 +243,14 @@ that is \emph{differentially validated} against the real library.
 The same programs are executed against both the stub and the real
 library, and their observable outputs must agree on the covered
 fragment; anything outside the fragment is rejected loudly rather
-than silently approximated.  Differential testing is an old technique
-\cite{McKeeman98}, but giving stubs formal semantics and then
-validating them against production libraries at this granularity is,
-to our knowledge, new.  It replaces the pervasive but unprincipled
+than silently approximated.      Differential testing is an old technique
+\cite{McKeeman98}, and adjacent ideas exist in many forms:
+CompCert's external models for I/O \cite{Leroy16}, QuickChick's
+executable semantics for property-based testing \cite{Paraskevopoulou22},
+K framework's reference interpreters \cite{Rosu13}, and ordinary
+mocking frameworks.  \textbf{We are unaware of previous work combining
+executable operational semantics for production libraries with
+differential validation against the concrete implementation.}  It replaces the pervasive but unprincipled
 use of mocks with a conformance regime that is itself checkable.
 
 \subsection{Automatic lowering from Python contracts to Rocq}
@@ -265,6 +269,20 @@ into a small imperative language with exceptions (\textsc{SnakeletExn}
 an automatically proven totality lemma, invariant-preservation lemma,
 and frame-soundness lemma.  The dependency-layered emission for
 parallel proof generation (\cref{sec:lowering}) is likewise novel.
+
+\paragraph{Foundations in Iris.}
+Our WP calculus is not built from scratch.  It is a direct
+application of the Iris project's \texttt{gen\_heap} library
+\cite{Jung18} and follows the weakest-precondition calculus
+framework of Iris~\cite{Iris}.  The two-cell heap model
+(\texttt{store\_loc}, \texttt{trace\_loc}) is a thin layer of
+FunSpecS-specific specification logic over Iris's standard ghost
+state and points-to reasoning.  All propositional-level proof
+machinery --- lookup/insert lemmas, update application, frame
+soundness --- is standard Iris reasoning, reused without
+modification.  Our contribution is the \emph{lowering}: the
+mechanical translation from Python contracts into Iris-style
+specification predicates, not the calculus itself.
 
 \subsection{Semantic frame discipline with insertion}
 \label{sec:contrib-frames}
@@ -1126,6 +1144,10 @@ Ralf Jung, Robbert Krebbers, Jacques-Henri Jourdan, et al.
 \textit{Iris: Monoids and Invariants as an Orthogonal Basis for
 Concurrent Reasoning}.  In POPL 2018.
 
+\bibitem{Jung18}
+Ralf Jung.
+\textit{The Iris Project}. \url{https://iris-project.org/}, 2018.
+
 \bibitem{VanCollem2026}
 Tom Van Collem, Bas de Vilhena, and Robbert Krebbers.
 \textit{Exceptions in the Snakelet Language}.
@@ -1156,6 +1178,21 @@ Digital Technical Journal, 10(1):100--107, 1998.
 Jean-Christophe Filli\^atre.
 \textit{Why3: A Platform for Deductive Program Verification}.
 In CAV 2013.
+
+\bibitem{Leroy16}
+Xavier Leroy et al.
+\textit{CompCert: Formally Verified Optimizing Compiler}.
+\url{https://compcert.org/}, 2016.
+
+\bibitem{Paraskevopoulou22}
+Zoe Paraskevopoulou et al.
+\textit{QuickChick: Property-Based Testing in Coq}.
+JFP, 2022.
+
+\bibitem{Rosu13}
+Grigore Ro\c{s}u.
+\textit{From Rewriting Logic, to Programming Language Semantics, to Program Verification}.
+In LOPSTR 2013.
 
 \end{thebibliography}
 
