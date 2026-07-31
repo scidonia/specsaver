@@ -35,7 +35,7 @@
 
 \title{\textbf{Vericoding: Verification-Driven Development\\
 from Behavioural Features to Machine-Checked Proofs}\\[4pt]
-\large The \textsf{specsaver} Toolchain}
+\large The \textsf{axiomander} Toolchain}
 \author{Gavin Mendel-Gleason\\Scidonia}
 \date{July 2026}
 
@@ -53,7 +53,14 @@ differential validation, and machine-checked proof obligations can all
 be derived}.  We describe a \emph{vericoding} workflow in which a
 human-authored specification is the primary lasting artifact and
 generated code is a replaceable implementation detail.  We present a
-toolchain, \textsf{specsaver}, to operationalise the approach.
+toolchain, \textsf{axiomander}, to operationalise the approach.
+
+The formal backend targets \textsc{SnakeletExn}, a small imperative
+language in the HeapLang tradition extended with first-class
+exceptions --- crucial for modelling Python's exception-driven control
+flow.  Specifications are stateful: pre/post-conditions, exception
+arms, and frames are lowered into a Rocq weakest-precondition
+calculus over a two-cell heap model.
 The specification comprises Gherkin feature tables, a mathematical
 contract (pure, boolean-valued predicates over pre/post-state, frames,
 and exceptions), and an abstract state schema.  From this single
@@ -85,7 +92,7 @@ before and after each operation, and framed state declarations that
 bound exactly what each operation may read and write.  From this
 single specification every downstream verification activity is derived.
 
-\textsf{specsaver} is a toolchain for vericoding, and is itself
+\textsf{axiomander} is a toolchain for vericoding, and is itself
 battle-tested: the core contract language and theory machinery were
 extracted from a production citation-checking platform, and the worked
 examples include a production-stolen invitation flow that exercises
@@ -102,6 +109,17 @@ suite under contract checking to validate the specification, and then
 proceeds to formal proof.  Both flows converge on the same long-lived
 artifact --- the contract --- and the same endpoint: a machine-checked
 proof that the specification is internally sound.
+
+The contract language is \emph{fluid} in the Meyer sense: it is a
+declarative value assembled from named clauses, not imperative
+assertions scattered throughout the code.  More importantly, the same
+fluid contract serves double duty as an \emph{executable} test
+criterion and as the \emph{input} to machine-checked proof
+generation.  This is a gradual-typing-like discipline: contracts can
+be introduced incrementally (testing only), and hardened over time
+(adding frames, then exceptions, then invariants, then proof
+obligations), with the toolchain accepting whatever level of
+specification the domain author is ready to provide.
 
 \Cref{fig:pipeline} summarises the pipeline and \cref{tab:walkthrough}
 walks through a single example step by step.
@@ -187,7 +205,7 @@ a hand-verified kernel.}
   (d) \textbf{invariants} --- reserved $\leq$ on-hand, both non-negative. \\[8pt]
 
 \textbf{9. Lower} &
-  The same \texttt{Contract} object is introspected by \texttt{specsaver.lower}: deltas,
+  The same \texttt{Contract} object is introspected by \texttt{axiomander.lower}: deltas,
   scalars, and exception arms are extracted; a Rocq obligation file is emitted.
   \texttt{coqc} compiles it; per-obligation bisection yields a scoreboard. \\[8pt]
 
@@ -327,7 +345,7 @@ on the covered fragment.
 \section{Contract Language}\label{sec:language}
 %=====================================================================
 
-A \textsf{specsaver} contract is a first-class Python object built by
+A \textsf{axiomander} contract is a first-class Python object built by
 the \texttt{Contract} constructor in the \emph{fluid contract} style
 \cite{Meyer92,Leino10}: the contract is a declarative value assembled
 from named clauses, not imperative assertions scattered throughout the
@@ -365,7 +383,7 @@ $\langle \Sigma, \mathit{args}, \mathsf{pre}, \mathsf{post},
 \subsection{Semantic frames}
 
 Frame conditions in classical DbC are notoriously verbose.  In
-\textsf{specsaver} the contract declares only what it \emph{may}
+\textsf{axiomander} the contract declares only what it \emph{may}
 write:
 
 \[
@@ -726,12 +744,15 @@ hand-verified kernel.  The pipeline has three stages:
 \subsection{The Rocq kernel}
 
 The Coq side comprises three layers.  \textbf{SnakeletExnLang} is a
-small imperative language with dictionaries, lists, exceptions, and an
-evaluation relation.  \textbf{SnakeletExnWp} provides a
-weakest-precondition calculus over it with stateful opaque
-specifications.  \textbf{SpecPrelude} provides dictionary
-lookup/insert helpers and their correctness lemmas, proven once rather
-than per contract.
+small imperative language in the HeapLang tradition of the Iris
+project, extended with first-class exceptions (following
+van Collem, de Vilhena and Krebbers) --- crucial for modelling
+Python's exception-driven control flow.  \textbf{SnakeletExnWp}
+provides a weakest-precondition calculus over it with stateful opaque
+specifications in the FunSpecS style (pure, stateful opaque, and
+transparent function entries).  \textbf{SpecPrelude} provides
+dictionary lookup/insert helpers and their correctness lemmas, proven
+once rather than per contract.
 
 The specification kernel (\textbf{FunSpecS}) maps operation names to
 stateful specs $(\mathit{pre}, \mathit{post})$ where
@@ -892,7 +913,7 @@ obligations in the lowering; and the correctness of the emitter itself.
 \toprule
 \textbf{Metric} & \textbf{Value} \\
 \midrule
-Python source lines (specsaver core + examples) & $\approx$ 10,000 \\
+Python source lines (axiomander core + examples) & $\approx$ 10,000 \\
 Rocq source lines (kernel + proofs) & $\approx$ 3,500 \\
 Number of example domains & 3 \\
 Number of contracts & 6 \\
@@ -905,16 +926,19 @@ Lowering time (introspect + emit) & $< 0.5$\,s per contract \\
 Rocq compilation per obligation file & $< 30$\,s \\
 \bottomrule
 \end{tabular}
-\caption{Quantitative measures of the \textsf{specsaver} implementation.
+\caption{Quantitative measures of the \textsf{axiomander} implementation.
 All store obligations are machine-proved.}
 \label{tab:metrics}
 \end{table}
 
 \Cref{tab:metrics} gives quantitative measures.  All 23 store
 obligations across four contracts are fully proved against the Rocq
-kernel.  Trace obligations (list-append post-conditions for event
-channels) are enforced at runtime by the scenario runner and are the
-active development front in the lowering.
+kernel.  The lowering additionally emits obligations in dependency
+layers (one file per layer, plus a \texttt{schedule.json} DAG) for
+parallel proof orchestration by rocq-piler; each layer compiles
+independently.  Trace obligations (list-append post-conditions for
+event channels) are enforced at runtime by the scenario runner and
+are the active development front in the lowering.
 
 The three example domains exercise a range of verification scenarios:
 single-table keyed deltas (inventory), multi-key deltas with a
@@ -946,40 +970,40 @@ expanding the supported language fragment.
 
 \item \textbf{Design by Contract} (Meyer~\cite{Meyer92}, Eiffel):
 provides runtime assertions without a path to mechanised proof.
-\textsf{specsaver} keeps the executable-contract ergonomics and adds
+\textsf{axiomander} keeps the executable-contract ergonomics and adds
 the lowering to Rocq, plus frame inference that eliminates the
 verbosity of manual frame conditions.
 
 \item \textbf{Spec\#} (Leino and M\"uller~\cite{Leino10}): a
 language-integrated contract system with static verification via
-Boogie.  Like Spec\#, \textsf{specsaver} treats contracts as
+Boogie.  Like Spec\#, \textsf{axiomander} treats contracts as
 first-class; unlike Spec\#, the contracts are not tied to the
 implementation language and persist independently of the code.
 
 \item \textbf{Dafny, Frama-C, KeY, Why3}: verify source-level
 contracts but require the source language to be the specification
-language.  \textsf{specsaver} instead verifies an abstract model
+language.  \textsf{axiomander} instead verifies an abstract model
 aligned with the declared frame, keeping production code unmodified
 and language-agnostic.
 
 \item \textbf{Iris separation logic} (Jung et al.): provides a
-framework for building WP calculi.  \textsf{specsaver} uses the Iris
+framework for building WP calculi.  \textsf{axiomander} uses the Iris
 \texttt{gen\_heap} library as infrastructure for its Rocq kernel and
 shares the heap-cell update model.
 
 \item \textbf{Property-based testing} (QuickCheck~\cite{QuickCheck},
 Hypothesis): generates random inputs and checks properties.
-\textsf{specsaver} contracts are simultaneously the property oracle
+\textsf{axiomander} contracts are simultaneously the property oracle
 and the proof input; the Gherkin tables provide the concrete test
 data.
 
 \item \textbf{Behaviour-driven development} (Gherkin~\cite{Gherkin}):
-specifies behaviour in scenario tables.  \textsf{specsaver} connects
+specifies behaviour in scenario tables.  \textsf{axiomander} connects
 Gherkin to executable contracts and formal proof, so the scenarios
 become verified test data.
 
 \item \textbf{TLA\textsuperscript{+}}: specifies systems in temporal
-logic.  \textsf{specsaver} targets operational semantics and
+logic.  \textsf{axiomander} targets operational semantics and
 explicit state transitions with a considerably lower barrier to entry
 (Python lambdas vs.\ TLA\textsuperscript{+} formulas).
 
@@ -1020,7 +1044,7 @@ obligations can all be derived.  A vericoding workflow leaves the
 specification as the lasting artifact and the code as a replaceable
 implementation detail.
 
-The \textsf{specsaver} toolchain operationalises this thesis through
+The \textsf{axiomander} toolchain operationalises this thesis through
 six contributions: contracts as semantic intermediate representation,
 semantic frame inference, differentially validated library theories, a
 symmetric projection architecture, automatic lowering to Rocq proof
@@ -1045,8 +1069,8 @@ In LASER Summer School 2008/2009, LNCS 6029, Springer, 2010.
 
 \bibitem{SpecSaver25}
 Gavin Mendel-Gleason.
-\textit{specsaver: Specification-Driven Verification}.
-Source code and documentation. \texttt{https://github.com/scidonia/specsaver}, 2025--2026.
+\textit{axiomander: Specification-Driven Verification}.
+Source code and documentation. \texttt{https://github.com/scidonia/axiomander}, 2025--2026.
 
 \bibitem{Gherkin}
 Cucumber Ltd.
@@ -1073,6 +1097,27 @@ Coq development, 2026.
 Ralf Jung, Robbert Krebbers, Jacques-Henri Jourdan, et al.
 \textit{Iris: Monoids and Invariants as an Orthogonal Basis for
 Concurrent Reasoning}.  In POPL 2018.
+
+\bibitem{VanCollem2026}
+Tom Van Collem, Bas de Vilhena, and Robbert Krebbers.
+\textit{Exceptions in the Snakelet Language}.
+Coq development, 2026.
+
+\bibitem{HeapLang}
+The Iris Project.
+\textit{HeapLang: A Simple Imperative Language for Verification}.
+\texttt{https://iris-project.org/}, 2026.
+
+\bibitem{GradualTyping}
+Jeremy Tobin-Hochstadt and Matthias Felleisen.
+\textit{The Design and Implementation of Typed Scheme}.
+In POPL 2008.
+
+\bibitem{AbstractInterpretation}
+Patrick Cousot and Radhia Cousot.
+\textit{Abstract Interpretation: A Unified Lattice Model for
+Static Analysis of Programs by Construction or Approximation
+of Fixpoints}.  In POPL 1977.
 
 \end{thebibliography}
 

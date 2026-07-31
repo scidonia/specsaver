@@ -867,7 +867,21 @@ def emit_layered(info: ContractInfo, source: str, out_dir: str) -> None:
         for prev in range(layer_num):
             imports.append(f"Require Import {info.name}_L{prev}.")
         content = f"""(* Layer {layer_num} obligations for [{info.name}]. *)
+""" + ({
+  0: """(** HINT: for the lookup subgoal, write EXACTLY:
+      rewrite lookup_insert. rewrite decide_True. reflexivity. reflexivity.
+    Do NOT use //, auto, nor destruct decide — they produce opaque proof terms
+    that Qed rejects in coqc.
+    For dict_lookup_str subgoal, write EXACTLY: simpl. reflexivity. *)
 
+""",
+  1: f"""(** HINT: for O2, use the pre-proved lemma:
+      intros sigma vs Hpre.
+      eapply (gen_table_total "{info.name}" gen_pre gen_post vs sigma eq_refl Hpre).
+    For O3, destruct Hpre then: unfold updates_dom_in. constructor. *)
+
+""",
+}.get(layer_num, "")) + f"""
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 Require Import SnakeletExnLang SnakeletExnWp.
@@ -890,18 +904,113 @@ End gen_{info.name}_L{layer_num}."""
     ] + [layer_files[str(layer)] for layer in sorted(layer_files)]
     (base / "_CoqProject").write_text("\n".join(project_lines) + "\n")
 
-    # Emit schedule.json
-    schedule = {
+    # Emit _skill.md — library-specific proof patterns for rocq-piler
+    (base / "_skill.md").write_text("""# Iris / gmap / stdpp Proof Patterns
+
+## decide opacity
+`rewrite lookup_insert` introduces `if decide (k = k) then ...`. The `decide` typeclass from stdpp is opaque at Qed time — `destruct (decide (k = k))` produces a kernel-rejected proof term. Always use `rewrite decide_True; reflexivity` or `apply lookup_insert_eq` instead.
+
+## gmap singletons — CRITICAL
+
+**NEVER use `set`, `pose`, or `refine` for the sigma witness.** They make the map opaque to the kernel — coq-lsp will accept the proof but coqc rejects it. Always provide sigma directly inside `exists`:
+
+```coq
+(* CORRECT — works with both coq-lsp and coqc *)
+exists {[store_loc := LitDict [...]; trace_loc := LitList []]},
+       [LitString "SKU1"; ...].
+split.
+  - ... apply lookup_insert_eq ...
+  - ...
+
+(* WRONG — coq-lsp accepts, coqc rejects *)
+set (sigma := {[store_loc := ...]}).  (* opaque to kernel *)
+...
+unfold sigma. ... reflexivity.         (* coqc can't unify *)
+```
+
+The `exists` must receive the map literal directly so the kernel sees a concrete value, not a named definition. `apply lookup_insert_eq` for same-key lookup. For multi-key: first key uses `lookup_insert_eq`, subsequent keys use `rewrite lookup_insert_ne; [exact ... | congruence]`.
+
+## gen_table_total
+The shared defs file exports `gen_table_total` — one lemma for all spec-consistency proofs: if `gen_table f = Some (FunSpecS pre post)` and `pre sigma vs`, then `exists r ups, post sigma vs r ups /\\ updates_dom_in sigma ups`. Use `eapply (gen_table_total "fn" pre post vs sigma eq_refl Hpre)`. Function names match `gen_table` dispatch keys (the contract name for success, `<name>_exc<i>` for exception arms).
+
+## updates_dom_in / Forall
+`unfold updates_dom_in. constructor.` when ups = []. For singleton ups: `unfold updates_dom_in; simpl; split; [rewrite Hlookup; eauto | constructor]`.
+
+## store_inv
+`store_inv [(_, v)]` simplifies to `row_inv v /\\ True`. Use `unfold store_inv; simpl; split; [| exact I]`.
+
+## dict_lookup_str
+`simpl` reduces matching-key lookups — `String.eqb k k` reduces to `true`. Use `simpl; reflexivity`.
+
+## row_inv
+Unfold to existential over row fields. Provide witnesses and use `repeat split; lia` for constraints.
+
+## Witness construction for admissibility
+Use `{[store_loc := LitDict [...]; trace_loc := LitList []]}` for the sigma witness. The `store_loc` and `trace_loc` names are defined in the shared defs file.
+
+## Generic structure
+- L0: admissibility + exit coverage
+- L1: spec consistency (use gen_table_total)
+- L2: helper lemmas (store_inv_lookup, gen_preserves_inv)
+- L3: invariant preservation + frame soundness
+
+## L2 induction pattern (applies to all contracts)
+
+`store_inv_lookup` — exact proof (works for every contract):
+```coq
+induction store_d as [|kv rest IH]; intros k row Hinv Hlook; simpl in *.
+- discriminate.
+- destruct kv as [k0 v0].
+  destruct Hinv as [Hfst Hrest].
+  destruct k0 as [| | s | | | | | | | |]; simpl in *;
+    try (apply (IH k row Hrest Hlook)).
+  destruct (String.eqb k s) eqn:E.
+  + injection Hlook as Hlook. subst v0. exact Hfst.
+  + apply (IH k row Hrest Hlook).
+```
+
+`gen_preserves_inv_0` — structure (witnesses differ per contract):
+```coq
+intros <all premises>.
+induction store_d as [|kv rest IH]; intros Hlook Hrow Hpos Hge Hinv; simpl in *.
+- discriminate.
+- destruct kv as [k0 v0].
+  destruct Hinv as [Hhead Hrest].
+  destruct k0 as [| | s | | | | | | | |]; simpl in *;
+    try (split; [exact Hhead | apply IH]).
+  destruct (String.eqb sku s) eqn:E.
+  + apply String.eqb_eq in E; subst s.
+    injection Hlook as Hlook; subst v0.
+    split; [| exact Hrest].
+    destruct Hhead as [oh [res [rp [Heq [Hoh [Hres Hle]]]]]].
+    unfold row_of in Heq; injection Heq as Hl.
+    (* provide updated witnesses using the delta *)
+    exists on_hand_sku, (reserved_sku - quantity)%Z, reorder_point_sku.
+    split; [reflexivity |].
+    split; [exact Hoh | split; [exact Hge | lia]].
+  + split; [exact Hhead | apply IH].
+```
+""")
+
+    # Emit bench_spec.json — full spec with compile deps, prove phases, and suite tagging.
+    suite = source.split(":")[0].split(".")[1] if ":" in source else source
+    sorted_layers = sorted(layers.keys())
+    bench_spec = {
         "contract": info.name,
-        "phases": [
-            {
-                "files": [layer_files[str(0)], layer_files[str(2)]],
-                "maxParallel": 2,
-            },
-            {
-                "files": [layer_files[str(1)], layer_files[str(3)]],
-                "maxParallel": 2,
-            },
-        ],
+        "suite": suite,
+        "tags": ["heap", "stateful", "Iris"],
+        "compile": {
+            "shared": ["SnakeletExnLang.v", "SnakeletExnWp.v", "SpecPrelude.v"],
+            "per_contract": [f"{info.name}_defs.v"],
+        },
+        "prove": {
+            "phases": [
+                {
+                    "files": [layer_files[str(layer)]],
+                    "maxParallel": 1,
+                }
+                for layer in sorted_layers
+            ],
+        },
     }
-    (base / "schedule.json").write_text(json.dumps(schedule, indent=2) + "\n")
+    (base / "bench_spec.json").write_text(json.dumps(bench_spec, indent=2) + "\n")
