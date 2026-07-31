@@ -718,8 +718,8 @@ builders, an execution context, a projection, a materializer, and a
 runner.  Only five of these are genuinely domain-specific: types,
 service, contract, features, and witness builders.  The remaining four
 --- the execution context, projection, materializer, and runner --- are
-byte-identical infrastructure that was copied per domain before
-\texttt{SqlDomain} was introduced.
+the same infrastructure repeated verbatim per domain, with only class
+names and types changed.
 
 A \texttt{SqlDomain} declaration eliminates the copied infrastructure.
 The domain author writes the five genuine artifacts plus a single
