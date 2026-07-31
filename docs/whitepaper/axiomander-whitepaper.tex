@@ -557,12 +557,12 @@ available).
 \begin{array}[t]{l}
 s'.\mathit{products}[a.\mathit{sku}].\mathit{reserved}
   \;=\; s[\,\cdot\,].\mathit{reserved} + a.\mathit{quantity} \\[2pt]
-{}\wedge\; \mathsf{extends\_by\_one}(s.\mathit{reservation\_log},\, s'.\mathit{reservation\_log},\,
+{}\wedge\; \mathsf{e1}(s.\mathit{reservation\_log},\, s'.\mathit{reservation\_log},\,
       \lambda e.\; e.\mathit{sku} = a.\mathit{sku}) \\[2pt]
-{}\wedge\; \mathsf{extends\_by\_one}(s.\mathit{gauge\_log},\, s'.\mathit{gauge\_log},\;
+{}\wedge\; \mathsf{e1}(s.\mathit{gauge\_log},\, s'.\mathit{gauge\_log},\;
       \lambda g.\; g.\mathit{sku}=a.\mathit{sku} \land g.\mathit{on\_hand}=s'.\mathit{on\_hand}) \\[2pt]
 {}\wedge\; \mathsf{implies}(\mathit{crossed}(s,a,s'),\;
-      \mathsf{extends\_by\_one}(s.\mathit{alert\_log},\, s'.\mathit{alert\_log},\;
+      \mathsf{e1}(s.\mathit{alert\_log},\, s'.\mathit{alert\_log},\;
         \ldots))
 \end{array}
 \]
@@ -761,29 +761,36 @@ hand-verified kernel.  The pipeline has three stages:
 \textsf{introspect}, \textsf{emit}, and \textsf{score}.
 
 \begin{figure}[t]
-\centering
+\centering\small
 \begin{tikzpicture}[
-  node/.style={draw, thick, rounded corners=1.5mm, minimum height=0.95cm,
+  node/.style={draw, thick, rounded corners=1.5mm, minimum height=0.9cm,
                align=left, font=\footnotesize, anchor=west},
   ]
-  \node[node, fill=blue!8, minimum width=3.3cm] (c) {\textbf{Contract}\\(Python lambdas)};
-  \node[node, fill=orange!12, minimum width=4.2cm, right=0.7cm of c]
-        (i) {\textbf{introspect}\\AST extraction:\\deltas, scalars,\\exception arms\\(loud on out-of-shape)};
-  \node[node, fill=orange!12, minimum width=3.6cm, right=0.7cm of i]
-        (e) {\textbf{emit}\\gen\_pre / gen\_post\\function table\\+ obligations O1--O8};
-  \node[node, fill=green!10, minimum width=3.0cm, right=0.7cm of e]
+  \node[node, fill=blue!8, minimum width=2.4cm] (c) {\textbf{Contract}\\(Python\\lambdas)};
+  \node[node, fill=orange!12, minimum width=2.9cm, right=0.4cm of c]
+        (i) {\textbf{introspect}\\shape extraction\\(loud on out-of-shape)};
+  \node[node, fill=orange!12, minimum width=2.8cm, right=0.4cm of i]
+        (e) {\textbf{emit}\\gen\_pre/gen\_post\\+ obligation set};
+  \node[node, fill=green!10, minimum width=2.6cm, right=0.4cm of e]
         (s) {\textbf{score}\\\texttt{coqc} compile\\per-obligation\\bisection};
-  \node[node, fill=green!5, minimum width=3.3cm, below=0.55cm of s] (ok)
+  \node[node, fill=green!5, minimum width=2.3cm, below=0.4cm of s] (ok)
         {PROVED\\(all 4 contracts)};
-  \node[node, fill=red!8, minimum width=2.5cm, below=0.55cm of s, xshift=3.4cm]
-        (unk) {UNKNOWN\\$\to$ LLM\\oracle queue};
+  \node[node, fill=red!8, minimum width=2.3cm, below=0.4cm of s, xshift=2.5cm]
+        (unk) {UNKNOWN\\$\to$ LLM\\oracle};
+  \node[node, fill=orange!8, minimum width=2.3cm, below=0.4cm of s, xshift=5.0cm]
+        (disp) {DISPROVED\\$\to$ witness\\$\to$ back to\\dialectic};
   \draw[-{Stealth[length=2mm]}] (c) -- (i);
   \draw[-{Stealth[length=2mm]}] (i) -- (e);
   \draw[-{Stealth[length=2mm]}] (e) -- (s);
   \draw[-{Stealth[length=2mm]}] (s) -- (ok);
   \draw[-{Stealth[length=2mm]}] (s) -- (unk);
+  \draw[-{Stealth[length=2mm]}] (s) -- (disp);
 \end{tikzpicture}
-\caption{The lowering pipeline: introspect, emit, score.}
+\caption{The lowering pipeline: introspect, emit, score.  The
+scoreboard has three outcomes: \textsc{proved} (machine-checked),
+\textsc{unknown} (queued for the proof oracle), and \textsc{disproved}
+(a runtime counterexample is surfaced — a concrete witness of
+specification failure).}
 \label{fig:lowering}
 \end{figure}
 
