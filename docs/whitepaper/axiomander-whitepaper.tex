@@ -377,14 +377,17 @@ $(\sigma^{\mathsf{pre}}, a, r, \sigma^{\mathsf{post}})$.
 \begin{definition}[Theory]
 A \emph{theory} for a library $L$ is a tuple
 $\langle \mathcal{A}, \mathcal{E}, S, H, \mathsf{adapt},
-\mathsf{fid} \rangle$ where $\mathcal{A}$ is the action model
+\mathsf{val} \rangle$ where $\mathcal{A}$ is the action model
 (covered fragment of $L$), $\mathcal{E}$ is the event model (trace
 entries), $S$ is the pure state model, $H$ is a stub handler
 interpreting actions over $S$ and recording a trace,
 $\mathsf{adapt}$ connects $H$ to $L$'s API so unmodified service code
-runs against the stub, and $\mathsf{fid}$ is a differential test
-suite establishing observational equivalence between the stub and $L$
-on the covered fragment.
+runs against the stub, and $\mathsf{val}$ is the \emph{validation
+relation} (a set of proof obligations, one per program in the
+differential suite, each stating that the stub's observable output
+equals the real library's output on the covered fragment).  The
+validation relation is established by differential testing; it is
+the evidence that the theory is sound, not a mere mock.
 \end{definition}
 
 %=====================================================================
@@ -635,7 +638,7 @@ contracts are machine-proved.}
 
 A \emph{theory} for a library $L$ is a tuple
 $\langle \mathcal{A}, \mathcal{E}, S, H, \mathsf{adapt},
-\mathsf{fid} \rangle$ as defined in \cref{sec:model}.  The key
+\mathsf{val} \rangle$ as defined in \cref{sec:model}.  The key
 property is that the stub handler is validated by
 \emph{differential testing}: the same program runs against the real
 library $L$ and against the stub, and their observable outputs must
@@ -692,7 +695,7 @@ real sqlite3, no-ops without an open transaction.
 \subsection{Logging and OpenTelemetry}
 
 The same six-layer shape repeats for logging and OpenTelemetry
-theories.  Both ship differential fidelity suites that compare stub
+theories.  Both ship validation suites that compare stub
 output against the real library.  The logging theory captures every
 \texttt{logger.info/warning/error} call as a structured
 \texttt{LogEmit} record; the OTel theory captures the full span
@@ -1005,7 +1008,7 @@ The following are \textbf{implemented} and operational: executable
 contracts with pre/post conditions and exception exits; semantic frame
 checking; runtime scenario verification; domain declarations with
 generic conformance testing; the SQL, logging, and OpenTelemetry
-theories with differential fidelity suites; the lowering pipeline with
+theories with validation suites; the lowering pipeline with
 shape extraction, emission, and proof scoring; and all 23 store
 obligations machine-proved.
 
