@@ -712,11 +712,20 @@ are pure data.  New theories follow the same checklist.
 \section{Domain Declarations}\label{sec:domains}
 %=====================================================================
 
-Experience with three domains revealed a stable shape: only types,
-service, contracts, features, and witness builders are genuinely
-domain content; everything else was byte-identical infrastructure
-copied per domain.  The \texttt{SqlDomain} declaration collapses the
-latter.
+Every domain in Axiomander consists of the same nine artifacts:
+domain types, a service, a contract, Gherkin features, witness
+builders, an execution context, a projection, a materializer, and a
+runner.  Only five of these are genuinely domain-specific: types,
+service, contract, features, and witness builders.  The remaining four
+--- the execution context, projection, materializer, and runner --- are
+byte-identical infrastructure that was copied per domain before
+\texttt{SqlDomain} was introduced.
+
+A \texttt{SqlDomain} declaration eliminates the copied infrastructure.
+The domain author writes the five genuine artifacts plus a single
+declaration; the framework generates the rest.  Concretely, the
+inventory domain reduces from $\approx$500 lines of boilerplate to
+a $\sim$100-line declaration.
 
 \begin{figure}[t]
 \centering
@@ -746,13 +755,15 @@ dispatch, and the conformance suite.}
 \label{fig:domain-decl}
 \end{figure}
 
-A \texttt{TableSpec} names a table's columns, primary key, and the
-witness attribute carrying its initial rows; from these the
-materializer generates DDL execution, \texttt{DELETE + INSERT}
-seeding, engine construction, and teardown.  The projection queries
-each declared table and passes row dicts plus the event log to two
-small domain hooks.  Domains with irregular tables declare a
-\texttt{populate\_extra} hook.
+The materializer creates a temporary SQLite file, executes the
+declared DDL, and seeds rows from the witness.  The projection queries
+each declared table through SQLAlchemy, maps raw rows to typed domain
+records, and partitions the event log by channel.  The runner wires
+these into the six-stage check pipeline.  Domains with tables whose
+shape does not match a dataclass-to-row mapping (the key/value
+\texttt{limits} table in bank transfer) declare a
+\texttt{populate\_extra} hook and query such tables manually inside
+the projection hook.
 
 %=====================================================================
 \section{Lowering Architecture}\label{sec:lowering}
