@@ -907,29 +907,25 @@ a complete Rocq file.  The generated structure per operation is:
   the store invariant survives the single-row update.
 \end{itemize}
 
-\begin{lstlisting}[style=coq]
-Definition gen_post (sigma : sn_state) (vs : list sn_val)
-    (r : Result) (ups : cell_updates) : Prop :=
-  exists sku order quantity store_d on_hand_sku
-         reserved_sku reorder_point_sku,
-    vs = [LitString sku; LitString order; LitInt quantity] /\
-    sigma !! store_loc = Some (LitDict store_d) /\
-    dict_lookup_str sku store_d =
-      Some (row_of on_hand_sku reserved_sku reorder_point_sku) /\
-    r = RVal (LitInt reserved_sku) /\
-    ups = [(store_loc, LitDict (dict_insert_str sku
-            (row_of on_hand_sku (reserved_sku + quantity)
-                    reorder_point_sku) store_d))].
-\end{lstlisting}
-
 \subsection{Example: from Python contract to proved obligation}
 
 Consider the reserve contract from \cref{sec:examples}.  The shape
 extractor identifies one delta (\texttt{reserved += quantity}), a
 scalar precondition (\texttt{quantity > 0}), one exception exit
 (InsufficientStockError with a conjunctive when-condition), and row
-fields of type int.  These are lowered into a SnakeletExn
-specification over a two-cell heap:
+fields of type int.
+
+The Python source being lowered is the contract's post-condition:
+
+\begin{lstlisting}[style=python]
+lambda old_s, args, result, new_s: (
+    new_s.observed.products[args.sku].reserved
+    == old_s.observed.products[args.sku].reserved + args.quantity)
+\end{lstlisting}
+
+\noindent This lowers to the following SnakeletExn specification
+predicate (shown as the generated Coq):
+
 
 \begin{lstlisting}[style=coq]
 Definition gen_post (sigma : sn_state) (vs : list sn_val)
