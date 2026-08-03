@@ -149,8 +149,23 @@ def _lower_expr(node: pyast.expr) -> Expr:
         raise NotImplementedError(
             f"bool op {type(node.op).__name__}"
         )
+    if isinstance(node, pyast.Call):
+        fn = _lower_call_target(node.func)
+        args = tuple(_lower_expr(a) for a in node.args)
+        return SCall(fn, args)
     raise NotImplementedError(
         f"expression {type(node).__name__}: {pyast.dump(node)[:80]}"
+    )
+
+
+def _lower_call_target(node: pyast.expr) -> str:
+    """Extract the function name from a call target."""
+    if isinstance(node, pyast.Name):
+        return node.id
+    if isinstance(node, pyast.Attribute):
+        return node.attr
+    raise NotImplementedError(
+        f"call target {type(node).__name__}"
     )
 
 

@@ -16,6 +16,8 @@ FILES=(
   coq/SnakeletExnSpecSDemo.v
   coq/SpecPrelude.v
   coq/ReserveLowering.v
+  coq/AddOneLowering.v
+  coq/DictLowering.v
 )
 
 for f in "${FILES[@]}"; do
