@@ -18,6 +18,7 @@ FILES=(
   coq/ReserveLowering.v
   coq/AddOneLowering.v
   coq/DictLowering.v
+  coq/ComputeAvailableLowering.v
 )
 
 for f in "${FILES[@]}"; do
