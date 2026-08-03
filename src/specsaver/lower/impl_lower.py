@@ -153,6 +153,23 @@ def _lower_expr(node: pyast.expr) -> Expr:
         fn = _lower_call_target(node.func)
         args = tuple(_lower_expr(a) for a in node.args)
         return SCall(fn, args)
+    if isinstance(node, pyast.Attribute):
+        return SCall(
+            "dict_lookup_str",
+            (SString(node.attr), _lower_expr(node.value)),
+        )
+    if isinstance(node, pyast.Subscript):
+        if isinstance(node.slice, pyast.Constant):
+            return SCall(
+                "dict_lookup_str",
+                (_lower_expr(node.slice), _lower_expr(node.value)),
+            )
+        raise NotImplementedError("non-constant subscript")
+    if isinstance(node, pyast.Tuple):
+        return SRec(tuple(
+            (str(i), _lower_expr(elt))
+            for i, elt in enumerate(node.elts)
+        ))
     raise NotImplementedError(
         f"expression {type(node).__name__}: {pyast.dump(node)[:80]}"
     )
