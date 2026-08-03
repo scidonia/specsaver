@@ -87,9 +87,17 @@ class SRec:
     fields: tuple[tuple[str, Expr], ...]
 
 
+@dataclass(frozen=True)
+class STry:
+    body: Expr
+    handler_var: str
+    handler_body: Expr
+
+
 Expr = (
     SVar | SInt | SString | SUnit
     | SLet | SBinOp | SIf | SCall | SLoad | SStore | SRaise | SRec
+    | STry
 )
 
 
@@ -102,6 +110,7 @@ _BINOP_MAP = {
     pyast.Add: "AddOp",
     pyast.Sub: "SubOp",
     pyast.Mult: "MulOp",
+    pyast.Div: "DivOp",
     pyast.Lt: "LtOp",
     pyast.Gt: "GtOp",
     pyast.Eq: "EqOp",
@@ -208,6 +217,26 @@ def _lower_stmt(stmt: pyast.stmt, rest: Expr) -> Expr:
             _lower_body(stmt.body, rest),  # noqa: F821
             else_body,
         )
+    if isinstance(stmt, pyast.Raise):
+        exc = stmt.exc
+        if isinstance(exc, pyast.Call):
+            label = _lower_call_target(exc.func)
+            payload_fields: list[tuple[str, Expr]] = [
+                ("_label", SString(label)),
+            ]
+            for i, a in enumerate(exc.args):
+                payload_fields.append((str(i), _lower_expr(a)))
+            return SRaise(SRec(tuple(payload_fields)))
+        return SRaise(_lower_expr(exc) if exc else SString("RuntimeError"))
+    if isinstance(stmt, pyast.Try):
+        h_name = stmt.handlers[0].name if stmt.handlers else "e"
+        h_body = (_lower_body(stmt.handlers[0].body, rest)
+                  if stmt.handlers else rest)
+        return STry(
+            _lower_body(stmt.body, rest),
+            h_name if h_name else "e",
+            h_body,
+        )
     if isinstance(stmt, pyast.Expr):
         return _lower_expr(stmt.value)
     raise NotImplementedError(
@@ -285,4 +314,9 @@ def _emit(e: Expr) -> str:
             for k, v in e.fields
         )
         return f"Val (LitDict [{fields}])"
+    if isinstance(e, STry):
+        return (
+            f'Try ({_emit(e.body)}) "{e.handler_var}"'
+            f' ({_emit(e.handler_body)})'
+        )
     raise NotImplementedError(f"emit: {type(e).__name__}")
