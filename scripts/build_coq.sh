@@ -20,6 +20,7 @@ FILES=(
   coq/DictLowering.v
   coq/ComputeAvailableLowering.v
   coq/WithdrawLowering.v
+  coq/FullRestockLowering.v
 )
 
 for f in "${FILES[@]}"; do
