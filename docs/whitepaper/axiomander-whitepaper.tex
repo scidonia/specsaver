@@ -771,13 +771,21 @@ the projection hook.
 \section{Lowering Architecture}\label{sec:lowering}
 %=====================================================================
 
-The lowering pipeline lowers a Python \texttt{Contract} into the
-SnakeletExn language: the pre/post predicates become SnakeletExn
-expressions over a two-cell heap (a store dict and a trace dict),
-the invariants become SnakeletExn predicates, and the operation
-itself becomes a stateful specification in the FunSpecS calculus.
-The resulting Coq obligation file is scored against the
-hand-verified SnakeletExn kernel.  The pipeline has three stages:
+The lowering operates in two directions.  \textbf{Contract lowering}
+translates the Python predicate clauses into SnakeletExn
+specifications (FunSpecS pre/post over a heap model); this is
+implemented and the generated obligations are machine-proved.
+\textbf{Implementation lowering} would translate the Python service
+function --- the SQLAlchemy code inside \texttt{reserve()} --- into a
+SnakeletExn \emph{program}, which could then be proved to refine the
+contract specification.  This second direction is future work.
+Currently the connection between implementation and contract is
+established empirically by the scenario runner
+(\cref{sec:architecture}), which exercises the Python code against
+concrete Gherkin rows; it is a stated trust boundary, not a hidden
+one.
+
+The contract-lowering pipeline has three stages:
 \textsf{introspect}, \textsf{emit}, and \textsf{score}.
 
 \begin{figure}[t]
