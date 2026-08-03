@@ -228,10 +228,12 @@ The central thesis of this paper --- that a single declarative
 contract can drive testing, runtime checking, and machine-checked
 proof --- is a realisation of the classical design-by-contract thesis
 \cite{Meyer92,Leino10}, not a new idea in itself.  Spec\#, Dafny, and
-JML all pursue variants of this thesis.  Our contributions lie in the
-specific engineering that makes the thesis practical for Python
-database services, and in three mechanisms with no direct prior art
-at this granularity.
+JML all pursue variants of this thesis. The contribution of this paper
+is to show that changes in AI infrastructure now facilitate using this
+practically *in the large* due to changes in the cost structure of
+proof.  In pursuit of this we also connect up practical mechanisms for
+connecting the concept of mocks to theories in a way that fuses
+testing and formal modelling for instance for Python database services.
 
 \subsection{Differentially validated library theories}
 \label{sec:contrib-theories}
