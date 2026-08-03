@@ -771,9 +771,13 @@ the projection hook.
 \section{Lowering Architecture}\label{sec:lowering}
 %=====================================================================
 
-The lowering pipeline transforms a Python \texttt{Contract} into a
-Rocq obligation file and scores each obligation against a
-hand-verified kernel.  The pipeline has three stages:
+The lowering pipeline lowers a Python \texttt{Contract} into the
+SnakeletExn language: the pre/post predicates become SnakeletExn
+expressions over a two-cell heap (a store dict and a trace dict),
+the invariants become SnakeletExn predicates, and the operation
+itself becomes a stateful specification in the FunSpecS calculus.
+The resulting Coq obligation file is scored against the
+hand-verified SnakeletExn kernel.  The pipeline has three stages:
 \textsf{introspect}, \textsf{emit}, and \textsf{score}.
 
 \begin{figure}[t]
@@ -924,8 +928,8 @@ Consider the reserve contract from \cref{sec:examples}.  The shape
 extractor identifies one delta (\texttt{reserved += quantity}), a
 scalar precondition (\texttt{quantity > 0}), one exception exit
 (InsufficientStockError with a conjunctive when-condition), and row
-fields of type int.  The emitter translates this into the Coq
-fragment shown below:
+fields of type int.  These are lowered into a SnakeletExn
+specification over a two-cell heap:
 
 \begin{lstlisting}[style=coq]
 Definition gen_post (sigma : sn_state) (vs : list sn_val)
