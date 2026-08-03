@@ -923,8 +923,15 @@ lambda old_s, args, result, new_s: (
     == old_s.observed.products[args.sku].reserved + args.quantity)
 \end{lstlisting}
 
-\noindent This lowers to the following SnakeletExn specification
-predicate (shown as the generated Coq):
+\noindent The mapping from Python to SnakeletExn is direct:
+\texttt{old\_s.observed.products} becomes a lookup in the heap cell
+\texttt{store\_loc} (a LitDict), \texttt{args.sku} becomes a string
+argument \texttt{sku}, \texttt{args.quantity} becomes an integer
+argument \texttt{quantity}, the arithmetic expression
+\texttt{s[sku].reserved + quantity} becomes a symbolic delta over
+row fields, and the state update becomes a
+\texttt{dict\_insert\_str} into the store dictionary.  The generated
+Coq is shown below:
 
 
 \begin{lstlisting}[style=coq]
