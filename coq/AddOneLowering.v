@@ -47,11 +47,15 @@ Qed.
 Lemma add_one_refines_spec (x : Z) :
   ⊢ wp_exn (add_one_body x) (λ _, True)%I.
 Proof.
-  (* The lowered program reduces to Val (LitInt (x+1)).  The WP calculus
-     proves this via wp_bind_item (let-context) → wp_binop → wp_let →
-     wp_value, but the bind_post transformer and WPE notation require the
-     SnakeletExnWp Section to be open.  Phase 1 establishes the lowerer;
-     Phase 2 (Section-aware proof generation) will emit the full proof. *)
-Admitted.
+  unfold add_one_body.
+  iApply (wp_bind_item (LetCtx "y" (Var "y"))); [reflexivity|].
+  iApply wp_binop.
+  iNext.
+  iApply wp_value.
+  iApply wp_let.
+  iNext.
+  iApply wp_value.
+  eauto.
+Qed.
 
 End add_one_lowering.

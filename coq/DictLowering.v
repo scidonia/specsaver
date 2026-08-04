@@ -27,13 +27,20 @@ Definition row_of (oh rs rp : Z) : sn_val :=
            (LitString "reserved", LitInt rs);
            (LitString "reorder_point", LitInt rp)].
 
+(* Context provides the dict_lookup_str spec *)
+Hypothesis Hen_lookup : fun_entries "dict_lookup_str" =
+  Some (FunSpec
+    (fun vs => exists k d, vs = [LitString k; LitDict d])
+    (fun vs r => exists k d v, vs = [LitString k; LitDict d] /\
+               dict_lookup_str k d = Some v /\ r = v)).
+
 (* ── the lowered program (arguments substituted) ── *)
 Definition read_reserved_body (sku : string) : sn_expr :=
   Let "store_d" (Load (Val (LitLoc store_loc))) (
   Let "row"     (Call "dict_lookup_str"
-                     [Val (LitString sku); Var "store_d"]) (
+                      [Val (LitString sku); Var "store_d"]) (
   Let "res"     (Call "dict_lookup_str"
-                     [Val (LitString "reserved"); Var "row"]) (
+                      [Val (LitString "reserved"); Var "row"]) (
     Var "res"
   ))).
 
@@ -76,18 +83,62 @@ Proof.
   - unfold updates_dom_in. constructor.
 Qed.
 
-(** The refinement lemma: the lowered program satisfies the FunSpecS.
-    Proof admitted — the WP calculus needs the Section-aware emission
-    pattern established in Phase 1.  Phase 2 proves the lowerer handles
-    dict operations; the full proof follows from the same wp_load +
-    transparent-call pattern. *)
-Lemma read_reserved_refines_spec (sku : string) (store_d_vals : list (sn_val * sn_val))
-    (oh rs rp : Z) (sigma : sn_state) :
-  sigma !! store_loc = Some (LitDict store_d_vals) ->
-  dict_lookup_str sku store_d_vals = Some (row_of oh rs rp) ->
-  ⊢ wp_exn (read_reserved_body sku) (λ r,
-      ⌜r = RVal (LitInt rs)⌝)%I.
+(* ── wp_dict_lookup lemma ── *)
+Lemma wp_dict_lookup (key : string) (d : list (sn_val * sn_val)) (Phi : Result -> iProp Σ) :
+  (∀ v, ⌜dict_lookup_str key d = Some v⌝ -∗ Phi (RVal v)%I) -∗
+  WPE (Call "dict_lookup_str" [Val (LitString key); Val (LitDict d)]) {{ Phi }}.
 Proof.
-Admitted.
+  iIntros "Hpost".
+  iApply (wp_call "dict_lookup_str"
+    (fun vs => exists k d0, vs = [LitString k; LitDict d0])
+    (fun vs r => exists k d0 v, vs = [LitString k; LitDict d0] /\
+               dict_lookup_str k d0 = Some v /\ r = v)
+    [LitString key; LitDict d] Phi).
+  { exact Hen_lookup. }
+  { exists key, d. eauto. }
+  iNext. iIntros (v). iIntros "Hpure".
+  iDestruct "Hpure" as %Hpure.
+  destruct Hpure as [k' [d' [v' [Heq [Hdv Hr]]]]].
+  inversion Heq. subst k' d'.
+  subst v'.
+  iApply "Hpost". iPureIntro. exact Hdv.
+Qed.
+
+(** WP refinement: the lowered program satisfies the postcondition.
+    The heap must contain the store dict. *)
+Lemma read_reserved_refines (sku : string) (store_d_vals : list (sn_val * sn_val))
+    (oh rs rp : Z) :
+  dict_lookup_str sku store_d_vals = Some (row_of oh rs rp) ->
+  pointsto store_loc (DfracOwn 1) (LitDict store_d_vals) -∗
+  wp_exn (read_reserved_body sku) (λ r,
+    ⌜r = RVal (LitInt rs)⌝)%I.
+Proof.
+  iIntros (Hlookup) "Hstore".
+  unfold read_reserved_body.
+  iApply (wp_bind_item (LetCtx "store_d" (
+    Let "row" (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]) (
+    Let "res" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "row"]) (Var "res"))))); [reflexivity|].
+  iApply (wp_load with "Hstore").
+  iNext. iIntros "Hstore".
+  iApply wp_let.
+  iNext.
+  iApply (wp_bind_item (LetCtx "row" (
+    Let "res" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "row"]) (Var "res")))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v). iDestruct 1 as %Hdv.
+  assert (Some (row_of oh rs rp) = Some v) by congruence.
+  inversion H. subst v.
+  iApply wp_let.
+  iNext.
+  iApply (wp_bind_item (LetCtx "res" (Var "res"))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v2). iDestruct 1 as %Hdv2.
+  simpl in Hdv2.
+  inversion Hdv2. subst v2.
+  iApply wp_let.
+  iNext.
+  iApply wp_value.
+  iPureIntro. reflexivity.
+Qed.
 
 End dict_lowering.
