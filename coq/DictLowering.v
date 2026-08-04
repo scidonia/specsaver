@@ -121,7 +121,7 @@ Proof.
   iApply (wp_load with "Hstore").
   iNext. iIntros "Hstore".
   iApply wp_let.
-  iNext.
+  iNext. cbn [subst].
   iApply (wp_bind_item (LetCtx "row" (
     Let "res" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "row"]) (Var "res")))); [reflexivity|].
   iApply wp_dict_lookup.
@@ -129,14 +129,14 @@ Proof.
   assert (Some (row_of oh rs rp) = Some v) by congruence.
   inversion H. subst v.
   iApply wp_let.
-  iNext.
+  iNext. cbn [subst].
   iApply (wp_bind_item (LetCtx "res" (Var "res"))); [reflexivity|].
   iApply wp_dict_lookup.
   iIntros (v2). iDestruct 1 as %Hdv2.
   simpl in Hdv2.
   inversion Hdv2. subst v2.
   iApply wp_let.
-  iNext.
+  iNext. cbn [subst].
   iApply wp_value.
   iPureIntro. reflexivity.
 Qed.

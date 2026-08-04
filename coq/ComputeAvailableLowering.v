@@ -24,7 +24,13 @@ Definition row_of (oh rs rp : Z) : sn_val :=
            (LitString "reserved", LitInt rs);
            (LitString "reorder_point", LitInt rp)].
 
-(* ── the lowered program (arguments substituted) ── *)
+Hypothesis Hen_lookup : fun_entries "dict_lookup_str" =
+  Some (FunSpec
+    (fun vs => exists k d, vs = [LitString k; LitDict d])
+    (fun vs r => exists k d v, vs = [LitString k; LitDict d] /\
+               dict_lookup_str k d = Some v /\ r = v)).
+
+(* lowered program *)
 Definition compute_available_body (sku : string) : sn_expr :=
   Let "store_d" (Load (Val (LitLoc store_loc))) (
   Let "row"  (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]) (
@@ -33,7 +39,7 @@ Definition compute_available_body (sku : string) : sn_expr :=
     BinOp SubOp (Var "oh") (Var "res")
   )))).
 
-(* ── the FunSpecS contract ── *)
+(* FunSpecS contract *)
 Definition compute_available_pre (sigma : sn_state) (vs : list sn_val) : Prop :=
   exists sku store_d oh rs rp,
     vs = [LitString sku] /\
@@ -72,13 +78,88 @@ Proof.
   - unfold updates_dom_in. constructor.
 Qed.
 
-(** WP proof admitted — the lowered program correctly computes
-    oh - rs via wp_load → transparent dict_lookup_str calls →
-    wp_binop → wp_value.  Full automation needs the Section-aware
-    emission pattern from Phase 1. *)
-Lemma compute_available_refines (sku : string) :
-  ⊢ wp_exn (compute_available_body sku) (λ _, True)%I.
+(* wp_dict_lookup helper *)
+Lemma wp_dict_lookup (key : string) (d : list (sn_val * sn_val)) (Phi : Result -> iProp Σ) :
+  (∀ v, ⌜dict_lookup_str key d = Some v⌝ -∗ Phi (RVal v)%I) -∗
+  WPE (Call "dict_lookup_str" [Val (LitString key); Val (LitDict d)]) {{ Phi }}.
 Proof.
-Admitted.
+  iIntros "Hpost".
+  iApply (wp_call "dict_lookup_str"
+    (fun vs => exists k d0, vs = [LitString k; LitDict d0])
+    (fun vs r => exists k d0 v, vs = [LitString k; LitDict d0] /\
+               dict_lookup_str k d0 = Some v /\ r = v)
+    [LitString key; LitDict d] Phi).
+  { exact Hen_lookup. }
+  { exists key, d. eauto. }
+  iNext. iIntros (v). iIntros "Hpure".
+  iDestruct "Hpure" as %Hpure.
+  destruct Hpure as [k' [d' [v' [Heq [Hdv Hr]]]]].
+  inversion Heq. subst k' d'.
+  subst v'.
+  iApply "Hpost". iPureIntro. exact Hdv.
+Qed.
+
+(** WP refinement proof. *)
+Lemma compute_available_refines (sku : string) (store_d_vals : list (sn_val * sn_val))
+    (oh rs rp : Z) :
+  dict_lookup_str sku store_d_vals = Some (row_of oh rs rp) ->
+  pointsto store_loc (DfracOwn 1) (LitDict store_d_vals) -∗
+  wp_exn (compute_available_body sku) (λ r,
+    ⌜r = RVal (LitInt (oh - rs)%Z)⌝)%I.
+Proof.
+  iIntros (Hlookup) "Hstore".
+  unfold compute_available_body.
+
+  (* Step 1: Load the store dict *)
+  iApply (wp_bind_item (LetCtx "store_d" (
+    Let "row" (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]) (
+    Let "oh" (Call "dict_lookup_str" [Val (LitString "on_hand"); Var "row"]) (
+    Let "res" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "row"]) (
+    BinOp SubOp (Var "oh") (Var "res"))))))); [reflexivity|].
+  iApply (wp_load with "Hstore").
+  iNext. iIntros "Hstore".
+  iApply wp_let.
+  iNext. cbn.
+
+  (* Step 2: dict_lookup_str sku store_d_vals *)
+  iApply (wp_bind_item (LetCtx "row" (
+    Let "oh" (Call "dict_lookup_str" [Val (LitString "on_hand"); Var "row"]) (
+    Let "res" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "row"]) (
+    BinOp SubOp (Var "oh") (Var "res")))))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v). iDestruct 1 as %Hdv.
+  assert (Some (row_of oh rs rp) = Some v) by congruence.
+  inversion H. subst v.
+  iApply wp_let.
+  iNext. cbn.
+
+  (* Step 3: dict_lookup_str "on_hand" row_of *
+     After subst, Var "row" → Val (row_of oh rs rp). *)
+  iApply (wp_bind_item (LetCtx "oh" (
+    Let "res" (Call "dict_lookup_str" [Val (LitString "reserved");
+               Val (row_of oh rs rp)]) (
+    BinOp SubOp (Var "oh") (Var "res"))))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v1). iDestruct 1 as %Hdv1.
+  simpl in Hdv1. inversion Hdv1. subst v1.
+  iApply wp_let.
+  iNext. cbn.
+
+  (* Step 4: dict_lookup_str "reserved" row_of *)
+  iApply (wp_bind_item (LetCtx "res" (
+    BinOp SubOp (Val (LitInt oh)) (Var "res")))); [reflexivity|].
+  cbn [row_of].
+  iApply wp_dict_lookup.
+  iIntros (v2). iDestruct 1 as %Hdv2.
+  simpl in Hdv2. inversion Hdv2. subst v2.
+  iApply wp_let.
+  iNext. cbn.
+
+  (* Step 5: BinOp SubOp oh res *)
+  iApply wp_binop.
+  iNext.
+  iApply wp_value.
+  iPureIntro. reflexivity.
+Qed.
 
 End compute_available_lowering.
