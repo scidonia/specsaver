@@ -220,3 +220,80 @@ def test_restock_lowering_executes_exception_path():
         interp.eval(expr, env)
     # The exception should be ProductNotFoundError
     assert 'ProductNotFoundError' in str(exc_info.value)
+
+
+def test_reserve_lowering_executes_success():
+    """Execute the reserve operation (deduct stock)."""
+    src = (
+        'def reserve(sku, quantity):\n'
+        '    row = conn.execute(text(\n'
+        '        "SELECT on_hand, reserved FROM products"\n'
+        '        " WHERE sku = ?"), (sku,)).fetchone()\n'
+        '    if row is None:\n'
+        '        raise ProductNotFoundError(sku, "", quantity)\n'
+        '    conn.execute(text(\n'
+        '        "UPDATE products SET reserved = reserved + ?"\n'
+        '        " WHERE sku = ?"), (quantity, sku))\n'
+        '    return (sku, quantity)\n'
+    )
+    expr = lower_func(src)
+    interp = SnInterp()
+    interp.heap[1] = {'SKU1': {'on_hand': 100, 'reserved': 10, 'reorder_point': 5}}
+    env = {'sku': 'SKU1', 'quantity': 30, 'store_loc': ('loc', 1)}
+    result = interp.eval(expr, env)
+    assert result == {'0': 'SKU1', '1': 30}
+    assert interp.heap[1]['SKU1']['reserved'] == 40  # 10 + 30
+    assert interp.heap[1]['SKU1']['on_hand'] == 100  # unchanged
+
+
+def test_reserve_lowering_insufficient_stock():
+    """Reserve with insufficient stock raises InsufficientStockError."""
+    src = (
+        'def reserve(sku, quantity):\n'
+        '    row = conn.execute(text(\n'
+        '        "SELECT on_hand, reserved FROM products"\n'
+        '        " WHERE sku = ?"), (sku,)).fetchone()\n'
+        '    if row is None:\n'
+        '        raise ProductNotFoundError(sku, "", quantity)\n'
+        '    available = row["on_hand"] - row["reserved"]\n'
+        '    if available < quantity:\n'
+        '        raise InsufficientStockError(sku, quantity, available)\n'
+        '    conn.execute(text(\n'
+        '        "UPDATE products SET reserved = reserved + ?"\n'
+        '        " WHERE sku = ?"), (quantity, sku))\n'
+        '    return (sku, quantity)\n'
+    )
+    expr = lower_func(src)
+    interp = SnInterp()
+    # Only 5 available (10 - 5)
+    interp.heap[1] = {'SKU1': {'on_hand': 10, 'reserved': 5, 'reorder_point': 2}}
+    env = {'sku': 'SKU1', 'quantity': 20, 'store_loc': ('loc', 1)}
+    with pytest.raises(Exception) as exc_info:
+        interp.eval(expr, env)
+    assert 'InsufficientStockError' in str(exc_info.value)
+
+
+def test_compute_available_lowering():
+    """Compute available = on_hand - reserved."""
+    src = (
+        'def compute_available(sku):\n'
+        '    row = conn.execute(text(\n'
+        '        "SELECT on_hand, reserved FROM products"\n'
+        '        " WHERE sku = ?"), (sku,)).fetchone()\n'
+        '    return row["on_hand"] - row["reserved"]\n'
+    )
+    expr = lower_func(src)
+    interp = SnInterp()
+    interp.heap[1] = {'SKU1': {'on_hand': 50, 'reserved': 15, 'reorder_point': 10}}
+    env = {'sku': 'SKU1', 'store_loc': ('loc', 1)}
+    result = interp.eval(expr, env)
+    assert result == 35  # 50 - 15
+
+
+def test_type_error_in_lowered():
+    """Arithmetic on non-numeric raises TypeError in the lowered program."""
+    expr = lower_func("def f(x):\n    return x + ()\n")
+    interp = SnInterp()
+    with pytest.raises(Exception) as exc_info:
+        interp.eval(expr, {'x': 5})
+    assert 'TypeError' in str(exc_info.value) or 'unsupported' in str(exc_info.value)
