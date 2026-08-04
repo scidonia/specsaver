@@ -33,7 +33,7 @@ Hypothesis Hen_row_of : fun_entries "row_of" =
     (fun vs result => exists oh rs rp, vs = [LitInt oh; LitInt rs; LitInt rp] /\
                result = row_of oh rs rp)).
 
-(* Lowered restock body — store_loc as LitLoc value *)
+(* Lowered restock body *)
 Definition restock_body (sku : string) (qty : Z) : sn_expr :=
   Let "row" (Let "store_d" (Load (Val (LitLoc store_loc)))
                (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"])) (
@@ -118,14 +118,7 @@ Proof.
   iApply "Hpost".
 Qed.
 
-(** WP refinement: the lowered restock program satisfies any postcondition.
-
-    The proof decomposes the nested Let chain step by step.  Each step
-    uses [wp_bind_item] to focus the current Let, evaluates its RHS
-    (Load, Call, BinOp, Store), and substitutes the result.  The If
-    uses EqOp which returns LitBool false for LitDict vs LitUnit
-    (fixed in binop_eval).  The row_of Call has all args hoisted to
-    Vars by the theory_lower. *)
+(** WP refinement using the SnakeletExnTactics stage-tactic layer. *)
 Lemma restock_refines (sku : string) (qty : Z)
     (store_d_vals : list (sn_val * sn_val)) (oh rs rp : Z) :
   dict_lookup_str sku store_d_vals = Some (row_of oh rs rp) ->
