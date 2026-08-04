@@ -7,8 +7,21 @@ original Python function for the same inputs.
 import pytest
 
 from specsaver.lower.impl_lower import (
-    SBinOp, SCall, SIf, SInt, SLet, SLoad, SRaise, SRec, SStore,
-    SString, STry, SUnit, SVar, emit_snakelet, lower_func,
+    SBinOp,
+    SCall,
+    SIf,
+    SInt,
+    SLet,
+    SLoad,
+    SRaise,
+    SRec,
+    SStore,
+    SString,
+    STry,
+    SUnit,
+    SVar,
+    emit_snakelet,
+    lower_func,
 )
 
 
@@ -26,10 +39,14 @@ class SnInterp:
         if self.fuel <= 0:
             raise RuntimeError("out of fuel")
 
-        if isinstance(node, SInt): return node.value
-        if isinstance(node, SString): return node.value
-        if isinstance(node, SUnit): return None
-        if isinstance(node, SVar): return env[node.name]
+        if isinstance(node, SInt):
+            return node.value
+        if isinstance(node, SString):
+            return node.value
+        if isinstance(node, SUnit):
+            return None
+        if isinstance(node, SVar):
+            return env[node.name]
         if isinstance(node, SRec):
             return {k: self.eval(v, env) for k, v in node.fields}
         if isinstance(node, SLet):
@@ -76,19 +93,32 @@ class SnInterp:
         raise NotImplementedError(f"no eval for {type(node).__name__}")
 
     def _binop(self, op, left, right):
-        if op == "AddOp": return left + right
-        if op == "SubOp": return left - right
-        if op == "MulOp": return left * right
-        if op == "DivOp": return left // right
-        if op == "ModOp": return left % right
-        if op == "EqOp": return left == right
-        if op == "NeOp": return left != right
-        if op == "LtOp": return left < right
-        if op == "LeOp": return left <= right
-        if op == "GtOp": return left > right
-        if op == "GeOp": return left >= right
-        if op == "AndOp": return left and right
-        if op == "OrOp": return left or right
+        if op == "AddOp":
+            return left + right
+        if op == "SubOp":
+            return left - right
+        if op == "MulOp":
+            return left * right
+        if op == "DivOp":
+            return left // right
+        if op == "ModOp":
+            return left % right
+        if op == "EqOp":
+            return left == right
+        if op == "NeOp":
+            return left != right
+        if op == "LtOp":
+            return left < right
+        if op == "LeOp":
+            return left <= right
+        if op == "GtOp":
+            return left > right
+        if op == "GeOp":
+            return left >= right
+        if op == "AndOp":
+            return left and right
+        if op == "OrOp":
+            return left or right
         raise NotImplementedError(f"binop {op}")
 
     def _call(self, fname, args):
@@ -105,11 +135,30 @@ class SnInterp:
                 return d2
             return None
         if fname == "row_of":
-            return {'on_hand': args[0], 'reserved': args[1], 'reorder_point': args[2]}
+            return {
+                'on_hand': args[0],
+                'reserved': args[1],
+                'reorder_point': args[2],
+            }
         raise NotImplementedError(f"call {fname}")
 
 
 # --- BDD tests ---
+
+RESTOCK_SRC = (
+    'def restock(sku, quantity):\n'
+    '    row = conn.execute(text(\n'
+    '        "SELECT on_hand, reserved, reorder_point"\n'
+    '        " FROM products WHERE sku = ?"), (sku,)).fetchone()\n'
+    '    if row is None:\n'
+    '        raise ProductNotFoundError(\n'
+    '            sku, "", quantity, "not found")\n'
+    '    conn.execute(text(\n'
+    '        "UPDATE products SET on_hand = on_hand + ?"\n'
+    '        " WHERE sku = ?"), (quantity, sku))\n'
+    '    return (sku, quantity)\n'
+)
+
 
 def test_add_one_lowering():
     """Pure arithmetic lowering matches Python."""
@@ -120,8 +169,12 @@ def test_add_one_lowering():
 
 def test_comparison_lowering():
     """Comparison lowering matches Python."""
-    expr = lower_func("def f(x):\n    if x < 0:\n"
-                        "        return 0 - x\n    return x\n")
+    expr = lower_func(
+        "def f(x):\n"
+        "    if x < 0:\n"
+        "        return 0 - x\n"
+        "    return x\n"
+    )
     interp = SnInterp()
     assert interp.eval(expr, {'x': -5}) == 5
     assert interp.eval(expr, {'x': 3}) == 3
@@ -129,15 +182,7 @@ def test_comparison_lowering():
 
 def test_restock_lowering_produces_expected_shape():
     """The restock lowering produces the expected SnakeletExn structure."""
-    src = (
-        'def restock(sku, quantity):\n'
-        '    row = conn.execute(text("SELECT on_hand, reserved, reorder_point FROM products WHERE sku = ?"), (sku,)).fetchone()\n'
-        '    if row is None:\n'
-        '        raise ProductNotFoundError(sku, "", quantity, "not found")\n'
-        '    conn.execute(text("UPDATE products SET on_hand = on_hand + ? WHERE sku = ?"), (quantity, sku))\n'
-        '    return (sku, quantity)\n'
-    )
-    expr = lower_func(src)
+    expr = lower_func(RESTOCK_SRC)
     coq = emit_snakelet(expr)
     assert 'Load' in coq
     assert 'dict_lookup_str' in coq
@@ -151,20 +196,11 @@ def test_restock_lowering_produces_expected_shape():
 
 def test_restock_lowering_executes_success_path():
     """Execute the lowered restock program against a concrete initial state."""
-    src = (
-        'def restock(sku, quantity):\n'
-        '    row = conn.execute(text("SELECT on_hand, reserved, reorder_point FROM products WHERE sku = ?"), (sku,)).fetchone()\n'
-        '    if row is None:\n'
-        '        raise ProductNotFoundError(sku, "", quantity, "not found")\n'
-        '    conn.execute(text("UPDATE products SET on_hand = on_hand + ? WHERE sku = ?"), (quantity, sku))\n'
-        '    return (sku, quantity)\n'
-    )
-    expr = lower_func(src)
+    expr = lower_func(RESTOCK_SRC)
     interp = SnInterp()
     # Set up the heap: store_loc = 1, contains the products dict
     interp.heap[1] = {'SKU1': {'on_hand': 10, 'reserved': 3, 'reorder_point': 5}}
     # The lowered program uses Var "store_loc" for the heap cell
-    # We need to bind store_loc in the environment
     env = {'sku': 'SKU1', 'quantity': 20, 'store_loc': ('loc', 1)}
     result = interp.eval(expr, env)
     # Should return the receipt as a record (dict with string keys)
@@ -176,15 +212,7 @@ def test_restock_lowering_executes_success_path():
 
 def test_restock_lowering_executes_exception_path():
     """Execute the lowered restock program with a missing SKU."""
-    src = (
-        'def restock(sku, quantity):\n'
-        '    row = conn.execute(text("SELECT on_hand, reserved, reorder_point FROM products WHERE sku = ?"), (sku,)).fetchone()\n'
-        '    if row is None:\n'
-        '        raise ProductNotFoundError(sku, "", quantity, "not found")\n'
-        '    conn.execute(text("UPDATE products SET on_hand = on_hand + ? WHERE sku = ?"), (quantity, sku))\n'
-        '    return (sku, quantity)\n'
-    )
-    expr = lower_func(src)
+    expr = lower_func(RESTOCK_SRC)
     interp = SnInterp()
     interp.heap[1] = {'SKU1': {'on_hand': 10, 'reserved': 3, 'reorder_point': 5}}
     env = {'sku': 'MISSING', 'quantity': 20, 'store_loc': ('loc', 1)}
