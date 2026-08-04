@@ -185,13 +185,12 @@ def _lower_update(action: Update, param_names=None) -> LoweredSQL:
         row_args.append(set_map.get(f) or SCall(
             "dict_lookup_str", (SString(f), SVar("old_row"))))
 
-    # Hoist any BinOp args out of the Call — SnakeletExn Call args
-    # must be values (or Vars), not BinOps.  We compute them via a
-    # Let binding before the Call.
+    # Hoist any non-trivial args out of the row_of Call — SnakeletExn
+    # Call args must be values (or Vars), not Calls or BinOps.
     hoisted: list[tuple[str, Expr]] = []
     new_row_args: list[Expr] = []
     for i, arg in enumerate(row_args):
-        if isinstance(arg, SBinOp):
+        if isinstance(arg, (SBinOp, SCall)):
             tmp = f"_row_arg_{i}"
             hoisted.append((tmp, arg))
             new_row_args.append(SVar(tmp))

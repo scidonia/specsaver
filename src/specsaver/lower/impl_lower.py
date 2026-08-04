@@ -338,11 +338,37 @@ def _emit(e: Expr) -> str:
     if isinstance(e, SRaise):
         return f"Raise ({_emit(e.payload)})"
     if isinstance(e, SRec):
+        # If any field value is a Var or complex expr, we need to
+        # hoist them into Let bindings so LitDict gets only Vals.
+        # For now, if ALL fields are simple (SInt/SString/SUnit), emit directly.
+        all_simple = all(
+            isinstance(v, (SInt, SString, SUnit)) for _, v in e.fields
+        )
+        if all_simple:
+            fields = "; ".join(
+                f'(Val (LitString "{k}"), {_emit(v)})'
+                for k, v in e.fields
+            )
+            return f"Val (LitDict [{fields}])"
+        # Otherwise, hoist non-simple fields into Let bindings.
+        # _emit each field value, then build LitDict from the results.
+        parts: list[str] = []
+        field_exprs: list[tuple[str, Expr]] = []
+        for i, (k, v) in enumerate(e.fields):
+            if isinstance(v, (SInt, SString, SUnit)):
+                field_exprs.append((k, v))
+            else:
+                tmp = f"_rec_{i}"
+                parts.append(f'Let "{tmp}" ({_emit(v)})')
+                field_exprs.append((k, SVar(tmp)))
         fields = "; ".join(
             f'(Val (LitString "{k}"), {_emit(v)})'
-            for k, v in e.fields
+            for k, v in field_exprs
         )
-        return f"Val (LitDict [{fields}])"
+        dict_expr = f"Val (LitDict [{fields}])"
+        for part in reversed(parts):
+            dict_expr = f"{part} ({dict_expr})"
+        return dict_expr
     if isinstance(e, STry):
         return (
             f'Try ({_emit(e.body)}) "{e.handler_var}"'
