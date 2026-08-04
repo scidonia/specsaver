@@ -25,6 +25,11 @@ class SVar:
 
 
 @dataclass(frozen=True)
+class SLitLoc:
+    value: int  # positive location identifier
+
+
+@dataclass(frozen=True)
 class SInt:
     value: int
 
@@ -95,7 +100,7 @@ class STry:
 
 
 Expr = (
-    SVar | SInt | SString | SUnit
+    SVar | SLitLoc | SInt | SString | SUnit
     | SLet | SBinOp | SIf | SCall | SLoad | SStore | SRaise | SRec
     | STry
 )
@@ -309,6 +314,8 @@ def emit_snakelet(expr: Expr) -> str:
 def _emit(e: Expr) -> str:
     if isinstance(e, SVar):
         return f'Var "{e.name}"'
+    if isinstance(e, SLitLoc):
+        return f"Val (LitLoc (Loc {e.value}%positive))"
     if isinstance(e, SInt):
         return f"Val (LitInt {e.value})"
     if isinstance(e, SString):

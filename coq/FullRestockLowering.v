@@ -1,6 +1,6 @@
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
-Require Import SnakeletExnLang SnakeletExnWp.
+Require Import SnakeletExnLang SnakeletExnWp SnakeletExnTactics.
 Require Import SpecPrelude.
 
 Section restock_lowering.
@@ -33,13 +33,13 @@ Hypothesis Hen_row_of : fun_entries "row_of" =
     (fun vs result => exists oh rs rp, vs = [LitInt oh; LitInt rs; LitInt rp] /\
                result = row_of oh rs rp)).
 
-(* Lowered restock body *)
+(* Lowered restock body — store_loc as LitLoc value *)
 Definition restock_body (sku : string) (qty : Z) : sn_expr :=
-  Let "row" (Let "store_d" (Load (Var "store_loc"))
+  Let "row" (Let "store_d" (Load (Val (LitLoc store_loc)))
                (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"])) (
   If (BinOp EqOp (Var "row") (Val LitUnit))
      (Raise (Val (LitExn "ProductNotFoundError" LitUnit)))
-     (Let "_" (Let "store_d" (Load (Var "store_loc")) (
+     (Let "_" (Let "store_d" (Load (Val (LitLoc store_loc))) (
         Let "old_row" (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]) (
         Let "new_row" (
           Let "_row_arg_0" (BinOp AddOp
@@ -50,7 +50,7 @@ Definition restock_body (sku : string) (qty : Z) : sn_expr :=
           Call "row_of" [Var "_row_arg_0"; Var "_row_arg_1"; Var "_row_arg_2"])))) (
         Let "new_store" (Call "dict_insert_str"
           [Val (LitString sku); Var "new_row"; Var "store_d"]) (
-        Let "_" (Store (Var "store_loc") (Var "new_store"))
+        Let "_" (Store (Val (LitLoc store_loc)) (Var "new_store"))
           (Val LitUnit))))))
      (Val (LitDict
        [(LitString "0", LitString sku);
@@ -118,7 +118,14 @@ Proof.
   iApply "Hpost".
 Qed.
 
-(** WP refinement. *)
+(** WP refinement: the lowered restock program satisfies any postcondition.
+
+    The proof decomposes the nested Let chain step by step.  Each step
+    uses [wp_bind_item] to focus the current Let, evaluates its RHS
+    (Load, Call, BinOp, Store), and substitutes the result.  The If
+    uses EqOp which returns LitBool false for LitDict vs LitUnit
+    (fixed in binop_eval).  The row_of Call has all args hoisted to
+    Vars by the theory_lower. *)
 Lemma restock_refines (sku : string) (qty : Z)
     (store_d_vals : list (sn_val * sn_val)) (oh rs rp : Z) :
   dict_lookup_str sku store_d_vals = Some (row_of oh rs rp) ->

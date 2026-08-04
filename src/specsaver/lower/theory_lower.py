@@ -31,6 +31,7 @@ from .impl_lower import (
     SCall,
     SInt,
     SLet,
+    SLitLoc,
     SLoad,
     SStore,
     SString,
@@ -122,7 +123,7 @@ def _lower_select(action: Select, param_names: set[str] | None = None) -> Lowere
     key_expr = SVar(key) if (param_names and key in param_names) else SString(key)
     return LoweredSQL(
         expr=SLet(
-            "store_d", SLoad(SVar("store_loc")),
+            "store_d", SLoad(SLitLoc(1)),
             SCall("dict_lookup_str", (key_expr, SVar("store_d"))),
         ),
         reads_state=True,
@@ -205,7 +206,7 @@ def _lower_update(action: Update, param_names=None) -> LoweredSQL:
 
     return LoweredSQL(
         expr=SLet(
-            "store_d", SLoad(SVar("store_loc")),
+            "store_d", SLoad(SLitLoc(1)),
             SLet(
                 "old_row", SCall("dict_lookup_str",
                                  (key_expr, SVar("store_d"))),
@@ -218,7 +219,7 @@ def _lower_update(action: Update, param_names=None) -> LoweredSQL:
                                SVar("store_d"))),
                         SLet(
                             "_",
-                            SStore(SVar("store_loc"),
+                            SStore(SLitLoc(1),
                                    SVar("new_store")),
                             SUnit(),
                         ),
@@ -247,7 +248,7 @@ def _lower_insert(action: Insert) -> LoweredSQL:
 
     return LoweredSQL(
         expr=SLet(
-            "store_d", SLoad(SVar("store_loc")),
+            "store_d", SLoad(SLitLoc(1)),
             SLet(
                 "new_row", new_row,
                 SLet(
@@ -257,7 +258,7 @@ def _lower_insert(action: Insert) -> LoweredSQL:
                            SVar("store_d"))),
                     SLet(
                         "_",
-                        SStore(SVar("store_loc"),
+                        SStore(SLitLoc(1),
                                SVar("new_store")),
                         SVar("new_row"),
                     ),
