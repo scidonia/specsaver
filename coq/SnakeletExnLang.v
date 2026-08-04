@@ -524,6 +524,7 @@ Definition binop_eval (op : binop) (v1 v2 : sn_val) : sn_val :=
       | DictSetOp => match k with LitTuple (key :: val :: nil) => LitDict (dict_set_kvs kvs key val) | _ => LitUnit end
       | InOp => LitBool (dict_has_kvs kvs k)
       | LenOp | LengthOp => LitInt (Z.of_nat (List.length kvs))
+      | EqOp => LitBool (sn_val_eqb (LitDict kvs) k)
       | _ => LitUnit
       end
   | LitString s1, LitString s2 =>
@@ -569,7 +570,11 @@ Definition binop_eval (op : binop) (v1 v2 : sn_val) : sn_val :=
       | SetAddOp => LitSet (v :: vs)
       | _ => LitUnit
       end
-  | _, _ => LitUnit
+  | _, _ =>
+      match op with
+      | EqOp => LitBool (sn_val_eqb v1 v2)
+      | _ => LitUnit
+      end
   end
   end.
 

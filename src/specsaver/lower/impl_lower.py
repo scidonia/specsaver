@@ -265,7 +265,9 @@ def _lower_stmt(stmt: pyast.stmt, rest: Expr) -> Expr:
             h_body,
         )
     if isinstance(stmt, pyast.Expr):
-        return _lower_expr(stmt.value)
+        # Expression statement: evaluate for side effect, then continue.
+        # The result is discarded — sequence with a Let that ignores it.
+        return SLet("_", _lower_expr(stmt.value), rest)
     raise NotImplementedError(
         f"statement {type(stmt).__name__}: {pyast.dump(stmt)[:80]}"
     )
