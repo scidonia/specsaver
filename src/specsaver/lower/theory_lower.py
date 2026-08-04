@@ -121,7 +121,10 @@ def _lower_select(action: Select, param_names: set[str] | None = None) -> Lowere
 
     key_expr = SVar(key) if (param_names and key in param_names) else SString(key)
     return LoweredSQL(
-        expr=SCall("dict_lookup_str", (key_expr, SVar("store_d"))),
+        expr=SLet(
+            "store_d", SLoad(SVar("store_loc")),
+            SCall("dict_lookup_str", (key_expr, SVar("store_d"))),
+        ),
         reads_state=True,
         writes_state=False,
     )
@@ -199,7 +202,7 @@ def _lower_update(action: Update, param_names=None) -> LoweredSQL:
                                SVar("store_d"))),
                         SLet(
                             "_",
-                            SStore(SVar("_heap_store"),
+                            SStore(SVar("store_loc"),
                                    SVar("new_store")),
                             SUnit(),
                         ),
@@ -238,7 +241,7 @@ def _lower_insert(action: Insert) -> LoweredSQL:
                            SVar("store_d"))),
                     SLet(
                         "_",
-                        SStore(SVar("_heap_store"),
+                        SStore(SVar("store_loc"),
                                SVar("new_store")),
                         SVar("new_row"),
                     ),
