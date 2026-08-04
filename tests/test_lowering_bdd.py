@@ -12,6 +12,7 @@ from specsaver.lower.impl_lower import (
     SIf,
     SInt,
     SLet,
+    SLitLoc,
     SLoad,
     SRaise,
     SRec,
@@ -45,6 +46,8 @@ class SnInterp:
             return node.value
         if isinstance(node, SUnit):
             return None
+        if isinstance(node, SLitLoc):
+            return ('loc', node.value)
         if isinstance(node, SVar):
             return env[node.name]
         if isinstance(node, SRec):
@@ -201,7 +204,7 @@ def test_restock_lowering_executes_success_path():
     # Set up the heap: store_loc = 1, contains the products dict
     interp.heap[1] = {'SKU1': {'on_hand': 10, 'reserved': 3, 'reorder_point': 5}}
     # The lowered program uses Var "store_loc" for the heap cell
-    env = {'sku': 'SKU1', 'quantity': 20, 'store_loc': ('loc', 1)}
+    env = {'sku': 'SKU1', 'quantity': 20, }
     result = interp.eval(expr, env)
     # Should return the receipt as a record (dict with string keys)
     assert result == {'0': 'SKU1', '1': 20}
@@ -215,7 +218,7 @@ def test_restock_lowering_executes_exception_path():
     expr = lower_func(RESTOCK_SRC)
     interp = SnInterp()
     interp.heap[1] = {'SKU1': {'on_hand': 10, 'reserved': 3, 'reorder_point': 5}}
-    env = {'sku': 'MISSING', 'quantity': 20, 'store_loc': ('loc', 1)}
+    env = {'sku': 'MISSING', 'quantity': 20, }
     with pytest.raises(Exception) as exc_info:
         interp.eval(expr, env)
     # The exception should be ProductNotFoundError
@@ -239,7 +242,7 @@ def test_reserve_lowering_executes_success():
     expr = lower_func(src)
     interp = SnInterp()
     interp.heap[1] = {'SKU1': {'on_hand': 100, 'reserved': 10, 'reorder_point': 5}}
-    env = {'sku': 'SKU1', 'quantity': 30, 'store_loc': ('loc', 1)}
+    env = {'sku': 'SKU1', 'quantity': 30, }
     result = interp.eval(expr, env)
     assert result == {'0': 'SKU1', '1': 30}
     assert interp.heap[1]['SKU1']['reserved'] == 40  # 10 + 30
@@ -267,7 +270,7 @@ def test_reserve_lowering_insufficient_stock():
     interp = SnInterp()
     # Only 5 available (10 - 5)
     interp.heap[1] = {'SKU1': {'on_hand': 10, 'reserved': 5, 'reorder_point': 2}}
-    env = {'sku': 'SKU1', 'quantity': 20, 'store_loc': ('loc', 1)}
+    env = {'sku': 'SKU1', 'quantity': 20, }
     with pytest.raises(Exception) as exc_info:
         interp.eval(expr, env)
     assert 'InsufficientStockError' in str(exc_info.value)
@@ -285,7 +288,7 @@ def test_compute_available_lowering():
     expr = lower_func(src)
     interp = SnInterp()
     interp.heap[1] = {'SKU1': {'on_hand': 50, 'reserved': 15, 'reorder_point': 10}}
-    env = {'sku': 'SKU1', 'store_loc': ('loc', 1)}
+    env = {'sku': 'SKU1', }
     result = interp.eval(expr, env)
     assert result == 35  # 50 - 15
 
