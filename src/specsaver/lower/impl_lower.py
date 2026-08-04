@@ -148,6 +148,12 @@ def _lower_expr(node: pyast.expr) -> Expr:
             if op:
                 return SBinOp(op, _lower_expr(node.left),
                               _lower_expr(node.comparators[0]))
+            if isinstance(node.ops[0], pyast.Is):
+                return SBinOp("EqOp", _lower_expr(node.left),
+                              SUnit())
+            if isinstance(node.ops[0], pyast.IsNot):
+                eq = SBinOp("EqOp", _lower_expr(node.left), SUnit())
+                return SIf(eq, SInt(0), SInt(1))  # negated equality
         raise NotImplementedError("complex comparisons")
     if isinstance(node, pyast.BoolOp):
         if isinstance(node.op, pyast.And):
@@ -160,6 +166,14 @@ def _lower_expr(node: pyast.expr) -> Expr:
         )
     if isinstance(node, pyast.Call):
         fn = _lower_call_target(node.func)
+        # Theory-adorned calls: conn.execute(text("SQL"), params)
+        if fn == "execute" and _is_theory_call(node):
+            return _lower_theory_call(node)
+        # .fetchone() on a theory call is transparent (SELECT already returns row)
+        if fn == "fetchone" and isinstance(node.func, pyast.Attribute):
+            inner = node.func.value
+            if isinstance(inner, pyast.Call) and _is_theory_call(inner):
+                return _lower_theory_call(inner)
         args = tuple(_lower_expr(a) for a in node.args)
         return SCall(fn, args)
     if isinstance(node, pyast.Attribute):
@@ -182,6 +196,19 @@ def _lower_expr(node: pyast.expr) -> Expr:
     raise NotImplementedError(
         f"expression {type(node).__name__}: {pyast.dump(node)[:80]}"
     )
+
+
+def _is_theory_call(node: pyast.Call) -> bool:
+    """Check if this is a conn.execute(text(sql), ...) call."""
+    return len(node.args) > 0 and isinstance(node.args[0], pyast.Call)
+
+
+def _lower_theory_call(node: pyast.Call) -> Expr:
+    """Lower a SQLAlchemy call through the theory."""
+    from .theory_lower import lower_sql_call
+
+    result = lower_sql_call(node)
+    return result.expr
 
 
 def _lower_call_target(node: pyast.expr) -> str:

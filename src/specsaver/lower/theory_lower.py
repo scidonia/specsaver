@@ -54,15 +54,43 @@ def lower_sql_call(node: pyast.Call) -> LoweredSQL:
     theory, and builds the corresponding SnakeletExn expression.
     """
     sql_str, _params = _parse_execute(node)
-    action = translate_sql(sql_str, ())
+    param_names = _collect_param_names(node)
+    params = _collect_param_vals(node)
+    action = translate_sql(sql_str, params)
 
     if isinstance(action, Select):
-        return _lower_select(action)
+        return _lower_select(action, param_names)
     if isinstance(action, Update):
-        return _lower_update(action)
+        return _lower_update(action, param_names)
     if isinstance(action, Insert):
         return _lower_insert(action)
     raise NotImplementedError(f"SQL action {type(action).__name__}")
+
+
+def _collect_param_vals(node: pyast.Call) -> tuple:
+    """Extract raw param values for translate_sql."""
+    if len(node.args) < 2:
+        return ()
+    p = node.args[1]
+    if isinstance(p, pyast.Tuple):
+        return tuple(
+            elt.id if isinstance(elt, pyast.Name)
+            else elt.value if isinstance(elt, pyast.Constant)
+            else ''
+            for elt in p.elts
+        )
+    return ()
+
+
+def _collect_param_names(node: pyast.Call) -> set[str]:
+    names = set()
+    if len(node.args) >= 2:
+        p = node.args[1]
+        if isinstance(p, pyast.Tuple):
+            for e in p.elts:
+                if isinstance(e, pyast.Name):
+                    names.add(e.id)
+    return names
 
 
 def _parse_execute(node: pyast.Call) -> tuple[str, dict | None]:
@@ -81,7 +109,7 @@ def _parse_execute(node: pyast.Call) -> tuple[str, dict | None]:
 # ── SELECT lowering ───────────────────────────────────────────────────────
 
 
-def _lower_select(action: Select) -> LoweredSQL:
+def _lower_select(action: Select, param_names: set[str] | None = None) -> LoweredSQL:
     """SELECT ... WHERE key = value → dict lookup."""
     where_cols = [c for c, _ in action.where]
     where_vals = [v for _, v in action.where]
@@ -91,15 +119,15 @@ def _lower_select(action: Select) -> LoweredSQL:
     else:
         raise NotImplementedError("multi-column SELECT where")
 
+    key_expr = SVar(key) if (param_names and key in param_names) else SString(key)
     return LoweredSQL(
-        expr=SCall("dict_lookup_str",
-                   (SString(key), SVar("store_d"))),
+        expr=SCall("dict_lookup_str", (key_expr, SVar("store_d"))),
         reads_state=True,
         writes_state=False,
     )
 
 
-def _lower_update(action: Update) -> LoweredSQL:
+def _lower_update(action: Update, param_names=None) -> LoweredSQL:
     """UPDATE products SET col = expr WHERE key = val.
 
     Lowers to a let-chain that loads the store dict, looks up the row,
@@ -108,6 +136,8 @@ def _lower_update(action: Update) -> LoweredSQL:
     """
     key_col, key_val = action.where[0]
     key = key_val if isinstance(key_val, str) else str(key_val)
+    key_expr = (SVar(key) if (param_names and key in param_names)
+                else SString(key))
 
     # Build the expression for each set field
     # "col + value" → BinOp AddOp (dict_lookup_str "col" old_row) (value)
@@ -159,13 +189,13 @@ def _lower_update(action: Update) -> LoweredSQL:
             "store_d", SLoad(SVar("store_loc")),
             SLet(
                 "old_row", SCall("dict_lookup_str",
-                                 (SString(key), SVar("store_d"))),
+                                 (key_expr, SVar("store_d"))),
                 SLet(
                     "new_row", new_row,
                     SLet(
                         "new_store",
                         SCall("dict_insert_str",
-                              (SString(key), SVar("new_row"),
+                              (key_expr, SVar("new_row"),
                                SVar("store_d"))),
                         SLet(
                             "_",
