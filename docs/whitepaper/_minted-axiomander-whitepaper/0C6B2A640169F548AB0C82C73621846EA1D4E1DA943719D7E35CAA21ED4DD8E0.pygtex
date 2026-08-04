@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{lambda} \PYG{n}{old\PYGZus{}s}\PYG{p}{,} \PYG{n}{args}\PYG{p}{,} \PYG{n}{result}\PYG{p}{,} \PYG{n}{new\PYGZus{}s}\PYG{p}{:} \PYG{p}{(}
+    \PYG{n}{new\PYGZus{}s}\PYG{o}{.}\PYG{n}{observed}\PYG{o}{.}\PYG{n}{products}\PYG{p}{[}\PYG{n}{args}\PYG{o}{.}\PYG{n}{sku}\PYG{p}{]}\PYG{o}{.}\PYG{n}{reserved}
+    \PYG{o}{==} \PYG{n}{old\PYGZus{}s}\PYG{o}{.}\PYG{n}{observed}\PYG{o}{.}\PYG{n}{products}\PYG{p}{[}\PYG{n}{args}\PYG{o}{.}\PYG{n}{sku}\PYG{p}{]}\PYG{o}{.}\PYG{n}{reserved}
+       \PYG{o}{+} \PYG{n}{args}\PYG{o}{.}\PYG{n}{quantity}\PYG{p}{)}
+\end{Verbatim}

@@ -6,29 +6,24 @@
 \usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit,backgrounds}
-\usepackage{listings}
-\usepackage{xcolor}
+\usepackage{minted}
+\usepackage{tcolorbox}
+\tcbuselibrary{minted,skins,raster}
 \usepackage{booktabs}
 \usepackage{pifont}
 \usepackage{hyperref}
 \usepackage{cleveref}
 \usepackage{enumitem}
 
-\lstdefinestyle{python}{
-  language=Python,
-  basicstyle=\ttfamily\small,
-  keywordstyle=\color{blue!70!black}\bfseries,
-  stringstyle=\color{green!40!black},
-  commentstyle=\color{gray!80!black}\itshape,
-  showstringspaces=false, frame=single, framesep=2mm, xleftmargin=4mm,
-  numbers=none, breaklines=true, columns=fullflexible,
+\tcbset{
+  codebox/.style={
+    colback=gray!6, colframe=gray!40!black,
+    boxrule=0.4pt, arc=1.5pt, left=1mm, right=1mm, top=0.8mm, bottom=0.8mm,
+    before upper=\setlength{\parindent}{0pt},
+  },
 }
-\lstdefinestyle{coq}{
-  basicstyle=\ttfamily\small,
-  keywordstyle=\color{blue!70!black}\bfseries,
-  morekeywords={Definition,Lemma,Proof,Qed,Admitted,Section,End,forall,exists,Fixpoint,Context},
-  frame=single, framesep=2mm, xleftmargin=4mm, numbers=none, breaklines=true,
-}
+\BeforeBeginEnvironment{tcblisting}{\vspace{-2pt}}
+\AfterEndEnvironment{tcblisting}{\vspace{-2pt}}
 
 \newtheorem{definition}{Definition}
 \newtheorem{example}{Example}
@@ -887,6 +882,109 @@ subsequent \texttt{raise ProductNotFoundError} lowers to a
 \texttt{Raise} with a structured \texttt{LitDict} payload keyed by
 positional argument index.
 
+\textbf{Example: full restock service.}  The restock operation
+illustrates the complete lowering: SELECT with variable key, null
+check, structured exception, arithmetic UPDATE with store-write, and
+return.  The Python function (left, 12 source lines) lowers to the
+SnakeletExn program (right) in under 10~ms.
+
+\begin{figure}[t]
+\centering
+\begin{tcbraster}[raster columns=2, raster equal height,
+  raster column skip=3mm, raster force size=false]
+\begin{tcblisting}{codebox, listing only, title={\footnotesize Python source},
+  minted language=python,
+  minted options={fontsize=\fontsize{7}{8}\selectfont, breaklines=true}}
+def restock(sku, quantity):
+    row = conn.execute(
+        text("SELECT on_hand, reserved, reorder_point"
+             " FROM products WHERE sku = ?"),
+        (sku,)
+    ).fetchone()
+    if row is None:
+        raise ProductNotFoundError(
+            sku, "", quantity, "not found"
+        )
+    conn.execute(
+        text("UPDATE products"
+             " SET on_hand = on_hand + ?"
+             " WHERE sku = ?"),
+        (quantity, sku),
+    )
+    return (sku, quantity)
+\end{tcblisting}
+\begin{tcblisting}{codebox, listing only,
+  title={\footnotesize SnakeletExn lowered program},
+  minted language=coq,
+  minted options={fontsize=\fontsize{7}{8}\selectfont, breaklines=true}}
+Let "row"
+  (Let "store_d"
+     (Load (Var "store_loc"))
+     (Call "dict_lookup_str"
+        [Var "sku"; Var "store_d"]))
+  (If (BinOp EqOp (Var "row")
+                  (Val LitUnit))
+     (Raise (Val (LitDict
+        [(LitStr "_label",
+          LitStr "ProductNotFoundError");
+         (LitStr "0", Var "sku");
+         (LitStr "1", LitStr "");
+         (LitStr "2", Var "quantity");
+         (LitStr "3",
+          LitStr "not found")])))
+     (Let "store_d"
+        (Load (Var "store_loc"))
+        (Let "old_row"
+           (Call "dict_lookup_str"
+              [Var "sku"; Var "store_d"])
+           (Let "new_row"
+              (Call "row_of"
+                 [BinOp AddOp
+                    (Call "dict_lookup_str"
+                       [LitStr "on_hand";
+                        Var "old_row"])
+                    (Var "quantity");
+                  Call "dict_lookup_str"
+                    [LitStr "reserved";
+                     Var "old_row"];
+                  Call "dict_lookup_str"
+                    [LitStr "reorder_point";
+                     Var "old_row"]])
+              (Let "new_store"
+                 (Call "dict_insert_str"
+                    [Var "sku";
+                     Var "new_row";
+                     Var "store_d"])
+                 (Let "_"
+                    (Store (Var "store_loc")
+                     (Var "new_store"))
+                    (Val LitUnit))))))))
+\end{tcblisting}
+\end{tcbraster}
+\caption{Implementation lowering: the \texttt{restock} service function
+(12 lines of Python on the left) lowers to a SnakeletExn let-chain
+(right) in under 10~ms.  SELECT becomes \texttt{dict\_lookup\_str},
+null-check becomes \texttt{BinOp EqOp}/\texttt{LitUnit}, structured
+exceptions become \texttt{LitDict} payloads, and UPDATE becomes a
+let-chain over \texttt{dict\_lookup\_str} $\to$ \texttt{dict\_insert\_str}
+$\to$ \texttt{Store}.  Variable-name parameters (\texttt{sku},
+\texttt{quantity}) are resolved as \texttt{SVar} references in the
+lowered form.}
+\label{fig:restock-lowering}
+\end{figure}
+
+The lowered program operates on the two-cell heap:
+\texttt{store\_loc} for the products dictionary and
+\texttt{trace\_loc} for the event log.  In the success case the
+let-chain threads \texttt{store\_d} $\to$ \texttt{old\_row} $\to$
+\texttt{new\_row} $\to$ \texttt{new\_store} and writes back with a
+single \texttt{Store}.  In the missing-SKU case, the \texttt{Raise}
+emits a structured exception whose label and payload fields mirror the
+Python exception's class name and positional arguments; a contract's
+\texttt{raises} clause in the Gherkin table is lowered to a FunSpecS
+post-condition that matches the label and payload fields against the
+\emph{expected} exception.
+
 \subsection{The Rocq kernel}
 
 The Coq side comprises three layers.
@@ -990,11 +1088,14 @@ fields of type int.
 
 The Python source being lowered is the contract's post-condition:
 
-\begin{lstlisting}[style=python]
+\begin{tcblisting}{codebox, listing only,
+  minted language=python,
+  minted options={fontsize=\small, breaklines=true}}
 lambda old_s, args, result, new_s: (
     new_s.observed.products[args.sku].reserved
-    == old_s.observed.products[args.sku].reserved + args.quantity)
-\end{lstlisting}
+    == old_s.observed.products[args.sku].reserved
+       + args.quantity)
+\end{tcblisting}
 
 \noindent The mapping from Python to SnakeletExn is direct:
 \texttt{old\_s.observed.products} becomes a lookup in the heap cell
@@ -1004,10 +1105,11 @@ argument \texttt{quantity}, the arithmetic expression
 \texttt{s[sku].reserved + quantity} becomes a symbolic delta over
 row fields, and the state update becomes a
 \texttt{dict\_insert\_str} into the store dictionary.  The generated
-Coq is shown below:
+Coq is:
 
-
-\begin{lstlisting}[style=coq]
+\begin{tcblisting}{codebox, listing only,
+  minted language=coq,
+  minted options={fontsize=\small, breaklines=true}}
 Definition gen_post (sigma : sn_state) (vs : list sn_val)
     (r : Result) (ups : cell_updates) : Prop :=
   exists sku order quantity store_d on_hand_sku
@@ -1020,7 +1122,7 @@ Definition gen_post (sigma : sn_state) (vs : list sn_val)
     ups = [(store_loc, LitDict (dict_insert_str sku
             (row_of on_hand_sku (reserved_sku + quantity)
                     reorder_point_sku) store_d))].
-\end{lstlisting}
+\end{tcblisting}
 
 The obligation set for this contract is:
 

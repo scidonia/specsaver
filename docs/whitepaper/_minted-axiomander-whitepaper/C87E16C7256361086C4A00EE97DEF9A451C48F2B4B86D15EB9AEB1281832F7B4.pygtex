@@ -1,0 +1,44 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kn}{Let} \PYG{l+s+s2}{\PYGZdq{}row\PYGZdq{}}
+  \PYG{o}{(}\PYG{k+kn}{Let} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}d\PYGZdq{}}
+     \PYG{o}{(}\PYG{n}{Load} \PYG{o}{(}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}loc\PYGZdq{}}\PYG{o}{))}
+     \PYG{o}{(}\PYG{n}{Call} \PYG{l+s+s2}{\PYGZdq{}dict\PYGZus{}lookup\PYGZus{}str\PYGZdq{}}
+        \PYG{o}{[}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}sku\PYGZdq{}}\PYG{o}{;} \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}d\PYGZdq{}}\PYG{o}{]))}
+  \PYG{o}{(}\PYG{n}{If} \PYG{o}{(}\PYG{n}{BinOp} \PYG{n}{EqOp} \PYG{o}{(}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}row\PYGZdq{}}\PYG{o}{)}
+                  \PYG{o}{(}\PYG{n}{Val} \PYG{n}{LitUnit}\PYG{o}{))}
+     \PYG{o}{(}\PYG{n}{Raise} \PYG{o}{(}\PYG{n}{Val} \PYG{o}{(}\PYG{n}{LitDict}
+        \PYG{o}{[(}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}\PYGZus{}label\PYGZdq{}}\PYG{o}{,}
+          \PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}ProductNotFoundError\PYGZdq{}}\PYG{o}{);}
+         \PYG{o}{(}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}0\PYGZdq{}}\PYG{o}{,} \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}sku\PYGZdq{}}\PYG{o}{);}
+         \PYG{o}{(}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}1\PYGZdq{}}\PYG{o}{,} \PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}\PYGZdq{}}\PYG{o}{);}
+         \PYG{o}{(}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}2\PYGZdq{}}\PYG{o}{,} \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}quantity\PYGZdq{}}\PYG{o}{);}
+         \PYG{o}{(}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}3\PYGZdq{}}\PYG{o}{,}
+          \PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}not found\PYGZdq{}}\PYG{o}{)])))}
+     \PYG{o}{(}\PYG{k+kn}{Let} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}d\PYGZdq{}}
+        \PYG{o}{(}\PYG{n}{Load} \PYG{o}{(}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}loc\PYGZdq{}}\PYG{o}{))}
+        \PYG{o}{(}\PYG{k+kn}{Let} \PYG{l+s+s2}{\PYGZdq{}old\PYGZus{}row\PYGZdq{}}
+           \PYG{o}{(}\PYG{n}{Call} \PYG{l+s+s2}{\PYGZdq{}dict\PYGZus{}lookup\PYGZus{}str\PYGZdq{}}
+              \PYG{o}{[}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}sku\PYGZdq{}}\PYG{o}{;} \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}d\PYGZdq{}}\PYG{o}{])}
+           \PYG{o}{(}\PYG{k+kn}{Let} \PYG{l+s+s2}{\PYGZdq{}new\PYGZus{}row\PYGZdq{}}
+              \PYG{o}{(}\PYG{n}{Call} \PYG{l+s+s2}{\PYGZdq{}row\PYGZus{}of\PYGZdq{}}
+                 \PYG{o}{[}\PYG{n}{BinOp} \PYG{n}{AddOp}
+                    \PYG{o}{(}\PYG{n}{Call} \PYG{l+s+s2}{\PYGZdq{}dict\PYGZus{}lookup\PYGZus{}str\PYGZdq{}}
+                       \PYG{o}{[}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}on\PYGZus{}hand\PYGZdq{}}\PYG{o}{;}
+                        \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}old\PYGZus{}row\PYGZdq{}}\PYG{o}{])}
+                    \PYG{o}{(}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}quantity\PYGZdq{}}\PYG{o}{);}
+                  \PYG{n}{Call} \PYG{l+s+s2}{\PYGZdq{}dict\PYGZus{}lookup\PYGZus{}str\PYGZdq{}}
+                    \PYG{o}{[}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}reserved\PYGZdq{}}\PYG{o}{;}
+                     \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}old\PYGZus{}row\PYGZdq{}}\PYG{o}{];}
+                  \PYG{n}{Call} \PYG{l+s+s2}{\PYGZdq{}dict\PYGZus{}lookup\PYGZus{}str\PYGZdq{}}
+                    \PYG{o}{[}\PYG{n}{LitStr} \PYG{l+s+s2}{\PYGZdq{}reorder\PYGZus{}point\PYGZdq{}}\PYG{o}{;}
+                     \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}old\PYGZus{}row\PYGZdq{}}\PYG{o}{]])}
+              \PYG{o}{(}\PYG{k+kn}{Let} \PYG{l+s+s2}{\PYGZdq{}new\PYGZus{}store\PYGZdq{}}
+                 \PYG{o}{(}\PYG{n}{Call} \PYG{l+s+s2}{\PYGZdq{}dict\PYGZus{}insert\PYGZus{}str\PYGZdq{}}
+                    \PYG{o}{[}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}sku\PYGZdq{}}\PYG{o}{;}
+                     \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}new\PYGZus{}row\PYGZdq{}}\PYG{o}{;}
+                     \PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}d\PYGZdq{}}\PYG{o}{])}
+                 \PYG{o}{(}\PYG{k+kn}{Let} \PYG{l+s+s2}{\PYGZdq{}\PYGZus{}\PYGZdq{}}
+                    \PYG{o}{(}\PYG{n}{Store} \PYG{o}{(}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}store\PYGZus{}loc\PYGZdq{}}\PYG{o}{)}
+                     \PYG{o}{(}\PYG{n}{Var} \PYG{l+s+s2}{\PYGZdq{}new\PYGZus{}store\PYGZdq{}}\PYG{o}{))}
+                    \PYG{o}{(}\PYG{n}{Val} \PYG{n}{LitUnit}\PYG{o}{))))))))}
+\end{Verbatim}

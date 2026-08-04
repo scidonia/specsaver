@@ -1,0 +1,12 @@
+Definition gen_post (sigma : sn_state) (vs : list sn_val)
+    (r : Result) (ups : cell_updates) : Prop :=
+  exists sku order quantity store_d on_hand_sku
+         reserved_sku reorder_point_sku,
+    vs = [LitString sku; LitString order; LitInt quantity] /\
+    sigma !! store_loc = Some (LitDict store_d) /\
+    dict_lookup_str sku store_d =
+      Some (row_of on_hand_sku reserved_sku reorder_point_sku) /\
+    r = RVal (LitInt reserved_sku) /\
+    ups = [(store_loc, LitDict (dict_insert_str sku
+            (row_of on_hand_sku (reserved_sku + quantity)
+                    reorder_point_sku) store_d))].

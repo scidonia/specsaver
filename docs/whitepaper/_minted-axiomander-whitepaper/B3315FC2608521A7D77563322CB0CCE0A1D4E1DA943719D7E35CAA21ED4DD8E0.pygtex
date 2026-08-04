@@ -1,0 +1,19 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{def}\PYG{+w}{ }\PYG{n+nf}{restock}\PYG{p}{(}\PYG{n}{sku}\PYG{p}{,} \PYG{n}{quantity}\PYG{p}{):}
+    \PYG{n}{row} \PYG{o}{=} \PYG{n}{conn}\PYG{o}{.}\PYG{n}{execute}\PYG{p}{(}
+        \PYG{n}{text}\PYG{p}{(}\PYG{l+s+s2}{\PYGZdq{}SELECT on\PYGZus{}hand, reserved, reorder\PYGZus{}point\PYGZdq{}}
+             \PYG{l+s+s2}{\PYGZdq{} FROM products WHERE sku = ?\PYGZdq{}}\PYG{p}{),}
+        \PYG{p}{(}\PYG{n}{sku}\PYG{p}{,)}
+    \PYG{p}{)}\PYG{o}{.}\PYG{n}{fetchone}\PYG{p}{()}
+    \PYG{k}{if} \PYG{n}{row} \PYG{o+ow}{is} \PYG{k+kc}{None}\PYG{p}{:}
+        \PYG{k}{raise} \PYG{n}{ProductNotFoundError}\PYG{p}{(}
+            \PYG{n}{sku}\PYG{p}{,} \PYG{l+s+s2}{\PYGZdq{}\PYGZdq{}}\PYG{p}{,} \PYG{n}{quantity}\PYG{p}{,} \PYG{l+s+s2}{\PYGZdq{}not found\PYGZdq{}}
+        \PYG{p}{)}
+    \PYG{n}{conn}\PYG{o}{.}\PYG{n}{execute}\PYG{p}{(}
+        \PYG{n}{text}\PYG{p}{(}\PYG{l+s+s2}{\PYGZdq{}UPDATE products\PYGZdq{}}
+             \PYG{l+s+s2}{\PYGZdq{} SET on\PYGZus{}hand = on\PYGZus{}hand + ?\PYGZdq{}}
+             \PYG{l+s+s2}{\PYGZdq{} WHERE sku = ?\PYGZdq{}}\PYG{p}{),}
+        \PYG{p}{(}\PYG{n}{quantity}\PYG{p}{,} \PYG{n}{sku}\PYG{p}{),}
+    \PYG{p}{)}
+    \PYG{k}{return} \PYG{p}{(}\PYG{n}{sku}\PYG{p}{,} \PYG{n}{quantity}\PYG{p}{)}
+\end{Verbatim}

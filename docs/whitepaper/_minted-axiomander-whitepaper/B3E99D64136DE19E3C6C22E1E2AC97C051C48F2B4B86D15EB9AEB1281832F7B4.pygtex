@@ -1,0 +1,14 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kn}{Definition} \PYG{n}{gen\PYGZus{}post} \PYG{o}{(}\PYG{n}{sigma} \PYG{o}{:} \PYG{n}{sn\PYGZus{}state}\PYG{o}{)} \PYG{o}{(}\PYG{n}{vs} \PYG{o}{:} \PYG{n}{list} \PYG{n}{sn\PYGZus{}val}\PYG{o}{)}
+    \PYG{o}{(}\PYG{n}{r} \PYG{o}{:} \PYG{n}{Result}\PYG{o}{)} \PYG{o}{(}\PYG{n}{ups} \PYG{o}{:} \PYG{n}{cell\PYGZus{}updates}\PYG{o}{)} \PYG{o}{:} \PYG{k+kt}{Prop} \PYG{o}{:=}
+  \PYG{k}{exists} \PYG{n}{sku} \PYG{n}{order} \PYG{n}{quantity} \PYG{n}{store\PYGZus{}d} \PYG{n}{on\PYGZus{}hand\PYGZus{}sku}
+         \PYG{n}{reserved\PYGZus{}sku} \PYG{n}{reorder\PYGZus{}point\PYGZus{}sku}\PYG{o}{,}
+    \PYG{n}{vs} \PYG{o}{=} \PYG{o}{[}\PYG{n}{LitString} \PYG{n}{sku}\PYG{o}{;} \PYG{n}{LitString} \PYG{n}{order}\PYG{o}{;} \PYG{n}{LitInt} \PYG{n}{quantity}\PYG{o}{]} \PYG{o}{/\PYGZbs{}}
+    \PYG{n}{sigma} \PYG{o}{!!} \PYG{n}{store\PYGZus{}loc} \PYG{o}{=} \PYG{n}{Some} \PYG{o}{(}\PYG{n}{LitDict} \PYG{n}{store\PYGZus{}d}\PYG{o}{)} \PYG{o}{/\PYGZbs{}}
+    \PYG{n}{dict\PYGZus{}lookup\PYGZus{}str} \PYG{n}{sku} \PYG{n}{store\PYGZus{}d} \PYG{o}{=}
+      \PYG{n}{Some} \PYG{o}{(}\PYG{n}{row\PYGZus{}of} \PYG{n}{on\PYGZus{}hand\PYGZus{}sku} \PYG{n}{reserved\PYGZus{}sku} \PYG{n}{reorder\PYGZus{}point\PYGZus{}sku}\PYG{o}{)} \PYG{o}{/\PYGZbs{}}
+    \PYG{n}{r} \PYG{o}{=} \PYG{n}{RVal} \PYG{o}{(}\PYG{n}{LitInt} \PYG{n}{reserved\PYGZus{}sku}\PYG{o}{)} \PYG{o}{/\PYGZbs{}}
+    \PYG{n}{ups} \PYG{o}{=} \PYG{o}{[(}\PYG{n}{store\PYGZus{}loc}\PYG{o}{,} \PYG{n}{LitDict} \PYG{o}{(}\PYG{n}{dict\PYGZus{}insert\PYGZus{}str} \PYG{n}{sku}
+            \PYG{o}{(}\PYG{n}{row\PYGZus{}of} \PYG{n}{on\PYGZus{}hand\PYGZus{}sku} \PYG{o}{(}\PYG{n}{reserved\PYGZus{}sku} \PYG{o}{+} \PYG{n}{quantity}\PYG{o}{)}
+                    \PYG{n}{reorder\PYGZus{}point\PYGZus{}sku}\PYG{o}{)} \PYG{n}{store\PYGZus{}d}\PYG{o}{))].}
+\end{Verbatim}
