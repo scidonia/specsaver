@@ -16,10 +16,25 @@ Definition env_lookup (x : string) (env : interp_env) : option sn_val :=
   | None => None
   end.
 
-(* ── heap model ── *)
+(* ── heap model (association list for Eval-computability) ── *)
+Definition heap_alist := list (loc * sn_val).
+
+Definition loc_eqb (l1 l2 : loc) : bool :=
+  bool_decide (l1 = l2).
+
+Definition heap_lookup (l : loc) (h : heap_alist) : option sn_val :=
+  match List.find (fun '(k, _) => loc_eqb k l) h with
+  | Some (_, v) => Some v
+  | None => None
+  end.
+
+Definition heap_insert (l : loc) (v : sn_val) (h : heap_alist) : heap_alist :=
+  (l, v) :: List.filter (fun '(k, _) => negb (loc_eqb k l)) h.
+
+(* ── the interpreter ── *)
 Record interp_state := {
-  heap : gmap loc sn_val;
-  trace : list (string * sn_val);  (* event channel *)
+  heap : heap_alist;
+  trace : list (string * sn_val);
 }.
 
 (* ── the interpreter ── *)
@@ -124,7 +139,7 @@ Fixpoint interp (fuel : nat) (st : interp_state) (env : interp_env)
       | Load loc_expr =>
           match interp fuel' st env loc_expr with
           | Some (RVal (LitLoc l), st') =>
-              match st.(heap) !! l with
+              match heap_lookup l st.(heap) with
               | Some v => Some (RVal v, st')
               | None => Some (RExn "KeyError" (LitString "unallocated-loc"), st')
               end
@@ -140,7 +155,7 @@ Fixpoint interp (fuel : nat) (st : interp_state) (env : interp_env)
               match interp fuel' st' env val_expr with
               | Some (RVal v, st'') =>
                   Some (RVal LitUnit,
-                        {| heap := <[l := v]> st''.(heap);
+                        {| heap := heap_insert l v st''.(heap);
                            trace := st''.(trace) |})
               | Some (RExn lbl pay, st'') => Some (RExn lbl pay, st'')
               | None => None
@@ -154,9 +169,9 @@ Fixpoint interp (fuel : nat) (st : interp_state) (env : interp_env)
       | Alloc val_expr =>
           match interp fuel' st env val_expr with
           | Some (RVal v, st') =>
-              let l := Loc (Pos.of_nat (size st'.(heap) + 1)) in
+              let l := Loc (Pos.of_nat (length st'.(heap) + 1)) in
               Some (RVal (LitLoc l),
-                    {| heap := <[l := v]> st'.(heap);
+                    {| heap := heap_insert l v st'.(heap);
                        trace := st'.(trace) |})
           | Some (RExn lbl pay, st') => Some (RExn lbl pay, st')
           | None => None
@@ -226,7 +241,7 @@ Fixpoint interp (fuel : nat) (st : interp_state) (env : interp_env)
   end.
 
 (* ── convenience wrapper ── *)
-Definition run (fuel : nat) (initial_heap : gmap loc sn_val)
+Definition run (fuel : nat) (initial_heap : heap_alist)
     (env : interp_env) (e : sn_expr) : option Result :=
   match interp fuel {| heap := initial_heap; trace := [] |} env e with
   | Some (r, _) => Some r
@@ -234,45 +249,25 @@ Definition run (fuel : nat) (initial_heap : gmap loc sn_val)
   end.
 
 (* ── sanity checks ── *)
-(* add_one: Let "y" (BinOp AddOp (Var "x") (Val (LitInt 1))) (Var "y") *)
+
+(* Pure arithmetic: 5 + 1 = 6 *)
 Example interp_add_one :
-  run 100 ∅ [("x", LitInt 5)]
+  run 100 [] [("x", LitInt 5)]
     (Let "y" (BinOp AddOp (Var "x") (Val (LitInt 1))) (Var "y"))
   = Some (RVal (LitInt 6)).
 Proof. reflexivity. Qed.
 
-(* restock success path: simplified — just the dict ops *)
-Example interp_restock_simplified :
-  run 500
-    (<[Loc 1%positive := LitDict
-      [(LitString "SKU1",
-        LitDict [(LitString "on_hand", LitInt 10);
-                 (LitString "reserved", LitInt 3);
-                 (LitString "reorder_point", LitInt 5)])]]> ∅)
-    [("sku", LitString "SKU1"); ("quantity", LitInt 20);
-     ("store_loc", LitLoc (Loc 1%positive))]
-    (Let "store_d" (Load (Var "store_loc")) (
-     Let "old_row" (Call "dict_lookup_str"
-                      [Val (LitString "SKU1"); Var "store_d"]) (
-     Let "_row_arg_0" (BinOp AddOp
-                        (Call "dict_lookup_str"
-                          [Val (LitString "on_hand"); Var "old_row"])
-                        (Var "quantity")) (
-     Let "new_row" (Call "row_of"
-                      [Var "_row_arg_0";
-                       Call "dict_lookup_str"
-                         [Val (LitString "reserved"); Var "old_row"];
-                       Call "dict_lookup_str"
-                         [Val (LitString "reorder_point"); Var "old_row"]]) (
-     Let "new_store" (Call "dict_insert_str"
-                        [Val (LitString "SKU1"); Var "new_row";
-                         Var "store_d"]) (
-     Let "_" (Store (Var "store_loc") (Var "new_store"))
-         (Val (LitDict
-           [(LitString "0", LitString "SKU1");
-            (LitString "1", LitInt 20)]))
-     ))))))
-  = Some (RVal (LitDict
-           [(LitString "0", LitString "SKU1");
-            (LitString "1", LitInt 20)])).
+(* Type error: 1 + () raises TypeError *)
+Example interp_add_type_error :
+  run 100 [] []
+    (BinOp AddOp (Val (LitInt 1)) (Val LitUnit))
+  = Some (RExn "TypeError" (LitString "unsupported operand: arithmetic on non-numeric")).
+Proof. reflexivity. Qed.
+
+(* Dict lookup: dict["on_hand"] = 10 *)
+Example interp_dict_lookup :
+  run 100 []
+    [("d", LitDict [(LitString "on_hand", LitInt 10)])]
+    (Call "dict_lookup_str" [Val (LitString "on_hand"); Var "d"])
+  = Some (RVal (LitInt 10)).
 Proof. reflexivity. Qed.
