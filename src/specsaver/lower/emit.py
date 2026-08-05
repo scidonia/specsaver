@@ -847,14 +847,21 @@ Definition {_TRACE_LOC} : loc := Loc 2%positive.""",
 
 
 def _statement_hash(text: str) -> str:
-    """SHA-256 of the statement portion of a lemma (up to 'Proof.').
+    """SHA-256 of the normalized statement (lemma keyword → 'Proof.').
 
-    Used by statements.json to enforce statement-immutability: if the
-    prover rewrites the statement, the hash no longer matches and the
-    outcome is UNPROVED (docs/proof-counterexample-workflow.md §4).
+    Normalized by collapsing all whitespace runs to single spaces, so
+    the hash is robust to formatting differences between the emitter
+    and any re-checker (e.g. rocq-piler's verdict tool).  Used by
+    statements.json to enforce statement-immutability.
     """
     import hashlib
-    stmt = text.split("Proof.")[0].strip()
+    import re
+    stmt = text.split("Proof.")[0]
+    # Start at the lemma keyword (drop leading doc comments).
+    m = re.search(r"\b(Lemma|Theorem|Corollary|Example)\b", stmt)
+    if m:
+        stmt = stmt[m.start():]
+    stmt = re.sub(r"\s+", " ", stmt).strip()
     return hashlib.sha256(stmt.encode()).hexdigest()
 
 
@@ -1126,23 +1133,31 @@ End gen_{info.name}_L{layer_num}."""
         (base / fname).write_text(content)
         layer_files[str(layer_num)] = fname
 
-    # Emit _CoqProject
-    project_lines = [
+    # Emit <name>_Lneg.v — evidential negation layer (candidate
+    # counter-examples + bundling theorems).
+    lneg_fname = f"{info.name}_Lneg.v"
+    (base / lneg_fname).write_text(_emit_lneg(info, arms, counter_witnesses))
+
+    # Emit _CoqProject — shared kernel via load path, no duplication.
+    # `-Q <kernel_rel> ""` maps the shared kernel (SnakeletExnLang/Wp/
+    # SpecPrelude) NON-recursively to the empty prefix, computed relative
+    # to out_dir so the package is location-independent.  `-R . ""` maps
+    # the package dir itself to the empty prefix.  Both compile and
+    # Require use the same bare names, avoiding the logical-name remap
+    # conflict that causes "inconsistent assumptions" digest errors.
+    import os as _os
+    repo_root = Path(__file__).resolve().parents[3]
+    kernel_dir = repo_root / "coq"
+    kernel_rel = _os.path.relpath(kernel_dir, base)
+    project_lines = [f"-Q {kernel_rel} \"\"", "-R . \"\""] + [
         f"{info.name}_defs.v",
-    ] + [layer_files[str(layer)] for layer in sorted(layer_files)]
+    ] + [layer_files[str(layer)] for layer in sorted(layer_files)] + [lneg_fname]
     (base / "_CoqProject").write_text("\n".join(project_lines) + "\n")
 
     # Emit _skill.md — SnakeletExn proof patterns for rocq-piler.
     # Canonical source: skill_snakelet_exn.md (shipped with the package).
     _skill_src = Path(__file__).parent / "skill_snakelet_exn.md"
     (base / "_skill.md").write_text(_skill_src.read_text())
-
-    # Emit <name>_Lneg.v — evidential negation layer (candidate
-    # counter-examples + bundling theorems).
-    lneg_fname = f"{info.name}_Lneg.v"
-    (base / lneg_fname).write_text(_emit_lneg(info, arms, counter_witnesses))
-    project_lines.append(lneg_fname)
-    (base / "_CoqProject").write_text("\n".join(project_lines) + "\n")
 
     # Emit statements.json — hash of every obligation statement, for
     # the statement-immutability check (workflow doc §4.1).

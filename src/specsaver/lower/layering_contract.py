@@ -65,7 +65,7 @@ emit_layering_contract = Contract(
         lambda s, a, r, s2: "_CoqProject" in s2.observed.layer_files,
         lambda s, a, r, s2: "schedule.json" in s2.observed.layer_files,
         lambda s, a, r, s2: (
-            s2.observed.coq_project[0] == f"{r.out_dir.split('/')[-1]}_defs.v"
+            f"{r.out_dir.split('/')[-1]}_defs.v" in s2.observed.coq_project
         ),
         lambda s, a, r, s2: all(
             f"{r.out_dir.split('/')[-1]}_L{i}.v" in s2.observed.layer_files

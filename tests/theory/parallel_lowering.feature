@@ -33,12 +33,12 @@ Feature: Parallel Obligation Emission
 
   Scenario: Output directory structure
     Given a contract for "release"
-    When obligations are emitted into "coq/gen/release/"
+    When obligations are emitted into "coqgen/release/"
     Then the following files exist:
-      | coq/gen/release/release_L0.v |
-      | coq/gen/release/release_L1.v |
-      | coq/gen/release/release_L2.v |
-      | coq/gen/release/release_L3.v |
-      | coq/gen/release/release_L4.v |
-      | coq/gen/release/_CoqProject  |
-      | coq/gen/release/schedule.json |
+      | coqgen/release/release_L0.v |
+      | coqgen/release/release_L1.v |
+      | coqgen/release/release_L2.v |
+      | coqgen/release/release_L3.v |
+      | coqgen/release/release_L4.v |
+      | coqgen/release/_CoqProject  |
+      | coqgen/release/schedule.json |

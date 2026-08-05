@@ -67,7 +67,7 @@ def main() -> int:
                         witnesses.extend(w)
             print(f"counter-example mode: {len(witnesses)} "
                   f"candidate witness(es) found")
-        out_dir = Path("coq/gen") / info.name
+        out_dir = Path("coqgen") / info.name
         emit_layered(info, source, str(out_dir), counter_witnesses=witnesses)
         print(f"emitted layered to {out_dir}/")
         # Score the definitions file (which proves the structural lemmas)
@@ -80,7 +80,7 @@ def main() -> int:
         unknown = 0
     else:
         text = emit_contract(info, source)
-        out_dir = Path("coq/gen")
+        out_dir = Path("coqgen")
         out_dir.mkdir(exist_ok=True)
         out = out_dir / f"Gen{info.name.capitalize()}Obligations.v"
         out.write_text(text)
