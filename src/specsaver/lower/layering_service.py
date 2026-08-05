@@ -30,10 +30,10 @@ class EmitLayeringService:
         out_dir = str(Path(tempfile.mkdtemp()) / info.name)
         emit_layered(info, f"{args.module}:{args.contract}", out_dir)
 
-        # Count layers
+        # Count layers (numbered L0..Ln only — exclude the Lneg layer).
         layer_files = sorted(
             f for f in os.listdir(out_dir)
-            if f.endswith(".v") and "_L" in f
+            if f.endswith(".v") and "_L" in f and "_Lneg" not in f
         )
         num_layers = len(layer_files)
         all_files = os.listdir(out_dir)

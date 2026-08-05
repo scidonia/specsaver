@@ -25,12 +25,17 @@ from specsaver.lower.introspect import introspect_contract
 def main() -> int:
     args = sys.argv[1:]
     layered = False
-    if args and args[0] == "--layered":
-        layered = True
+    counter = False
+    while args and args[0].startswith("--"):
+        if args[0] == "--layered":
+            layered = True
+        elif args[0] == "--counter":
+            counter = True
         args = args[1:]
     if len(args) < 6:
-        print("usage: gen_obligations.py [--layered] <module> <contract> "
-              "<types_module> <row_type> <map_field> <key_arg>")
+        print("usage: gen_obligations.py [--layered] [--counter] "
+              "<module> <contract> <types_module> <row_type> <map_field> "
+              "<key_arg>")
         return 1
     module_name, contract_name, types_name, row_name, map_field, key_arg = args[:6]
     contract = getattr(importlib.import_module(module_name), contract_name)
@@ -46,8 +51,24 @@ def main() -> int:
     source = f"{module_name}:{contract_name}"
 
     if layered:
+        witnesses = None
+        if counter:
+            # Collect authored witnesses from the contract module, if any.
+            # Convention: <CONTRACT_MODULE>_WITNESS or a module-level
+            # FALSE_*_WITNESS list/dict in runner-JSON form.
+            mod = importlib.import_module(module_name)
+            witnesses = []
+            for attr in dir(mod):
+                if attr.endswith("_WITNESS"):
+                    w = getattr(mod, attr)
+                    if isinstance(w, dict):
+                        witnesses.append(w)
+                    elif isinstance(w, list):
+                        witnesses.extend(w)
+            print(f"counter-example mode: {len(witnesses)} "
+                  f"candidate witness(es) found")
         out_dir = Path("coq/gen") / info.name
-        emit_layered(info, source, str(out_dir))
+        emit_layered(info, source, str(out_dir), counter_witnesses=witnesses)
         print(f"emitted layered to {out_dir}/")
         # Score the definitions file (which proves the structural lemmas)
         defs = out_dir / f"{info.name}_defs.v"

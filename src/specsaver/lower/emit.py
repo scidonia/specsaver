@@ -645,7 +645,9 @@ def _o5(info: ContractInfo) -> str:
         )
         parts.append("exact Hsc0" if info.scalars else "lia")
         if _delta_hyp(info, d):
-            if len(info.exits) > 1 or len(info.exits[0].when_clauses) > 1:
+            if (info.exits
+                    and (len(info.exits) > 1
+                         or len(info.exits[0].when_clauses) > 1)):
                 parts.append(
                     "destruct Havail as [[Hc | Hok] Hav2]; [congruence | lia]"
                 )
@@ -844,9 +846,235 @@ Definition {_TRACE_LOC} : loc := Loc 2%positive.""",
     ] if p)
 
 
-def emit_layered(info: ContractInfo, source: str, out_dir: str) -> None:
+def _statement_hash(text: str) -> str:
+    """SHA-256 of the statement portion of a lemma (up to 'Proof.').
+
+    Used by statements.json to enforce statement-immutability: if the
+    prover rewrites the statement, the hash no longer matches and the
+    outcome is UNPROVED (docs/proof-counterexample-workflow.md §4).
+    """
+    import hashlib
+    stmt = text.split("Proof.")[0].strip()
+    return hashlib.sha256(stmt.encode()).hexdigest()
+
+
+def _row_literal(info: ContractInfo, fields: dict) -> str:
+    """Build a row_of(...) call from a JSON field dict, ordered by the
+    domain's row field declaration."""
+    vals = " ".join(
+        str(fields.get(f, 0)) for f in _row_fields(info)
+    )
+    return f"(row_of {vals})"
+
+
+def _store_literal(info: ContractInfo, store: dict) -> str:
+    """Build a list of (LitString key, row) pairs from a JSON store dict."""
+    entries = "; ".join(
+        f'(LitString "{k}", {_row_literal(info, v)})'
+        for k, v in store.items()
+    )
+    return f"[{entries}]"
+
+
+def _args_literal(info: ContractInfo, args: list) -> str:
+    """Build the argument vector.  First arg is the key (string);
+    remaining args are encoded positionally as LitString or LitInt."""
+    lits = []
+    for a in args:
+        if isinstance(a, str):
+            lits.append(f'LitString "{a}"')
+        elif isinstance(a, bool):
+            lits.append(f"LitBool {'true' if a else 'false'}")
+        elif isinstance(a, (int, float)):
+            lits.append(f"LitInt {int(a)}")
+        else:
+            lits.append(f'LitString "{a}"')
+    return "[" + "; ".join(lits) + "]"
+
+
+def _args_exists(info: ContractInfo, args: list) -> str:
+    """Existential witnesses for the non-key args, in declaration order:
+    strings quoted, ints with %Z.  args[0] is the key (handled separately)."""
+    lits = []
+    for a in args[1:]:
+        if isinstance(a, str):
+            lits.append(f'"{a}"')
+        elif isinstance(a, bool):
+            lits.append("true" if a else "false")
+        else:
+            lits.append(f"{int(a)}%Z")
+    return ", ".join(lits)
+
+
+def _row_exists(info: ContractInfo, store: dict, sku: str) -> str:
+    """Existential witnesses for the looked-up row's fields, in the
+    domain's row-field order, as %Z literals (or quoted strings)."""
+    row = store.get(sku, {})
+    lits = []
+    for f, t in info.row_fields:
+        v = row.get(f, 0)
+        lits.append(f'"{v}"' if t == "str" else f"{v}%Z")
+    return ", ".join(lits)
+
+
+def _emit_lneg(info: ContractInfo, arms: list,
+               witnesses: list[dict] | None) -> str:
+    """Emit <name>_Lneg.v — the evidential negation layer.
+
+    Contains the CounterWitness record, any candidate witnesses
+    (materialized from runner JSON), computational satellite lemmas,
+    and per-obligation bundling theorems.  See
+    docs/proof-counterexample-workflow.md §5.
+    """
+    key = _keys(info)[0]
+
+    out = [f"""(* Evidential negation layer for [{info.name}].
+
+   Counter-examples as extractable data (CounterWitness), with
+   computational satellite lemmas and per-obligation bundling
+   theorems.  A DISPROVED verdict requires all satellites to close
+   plus the bundling theorem — statement-immutability applies as in
+   the positive layers. *)
+
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+Require Import SnakeletExnLang SnakeletExnWp.
+Require Import SpecPrelude.
+Require Import {info.name}_defs.
+
+Section gen_{info.name}_Lneg.
+Context `{{FC : FunCtx}}.
+
+(* ── the witness as extractable data ── *)
+Record CounterWitness := {{
+  cw_store   : list (sn_val * sn_val);
+  cw_key     : string;
+  cw_args    : list sn_val;
+  cw_bad_row : sn_val;
+}}.
+
+(* store_inv at a looked-up key gives row_inv — the L2 helper,
+   proved inline so Lneg is self-contained. *)
+Lemma store_inv_lookup : forall store_d k row,
+  store_inv store_d ->
+  dict_lookup_str k store_d = Some row ->
+  row_inv row.
+Proof.
+  induction store_d as [|kv rest IH]; intros k row Hinv Hlook; simpl in *.
+  - discriminate.
+  - destruct kv as [k0 v0].
+    destruct Hinv as [Hfst Hrest].
+    destruct k0 as [| | s | | | | | | | |]; simpl in *;
+      try (apply (IH k row Hrest Hlook)).
+    destruct (String.eqb k s) eqn:E.
+    + injection Hlook as Hlook. subst v0. exact Hfst.
+    + apply (IH k row Hrest Hlook).
+Qed.
+
+(** Statement form for the invariant-preservation negation.
+
+    A DISPROVED verdict on o5 (invariant preservation) takes this
+    shape: a concrete key/delta whose updated store violates
+    store_inv.  Candidates below instantiate it; the prover
+    certifies or refutes each. *)
+Theorem {info.name}_preservation_negation_form : forall (cw : CounterWitness),
+  dict_lookup_str cw.(cw_key) cw.(cw_store) <> None ->
+  ~ row_inv cw.(cw_bad_row) ->
+  ~ store_inv (dict_insert_str cw.(cw_key) cw.(cw_bad_row) cw.(cw_store)).
+Proof.
+  intros cw Hlook Hbad Hcontra.
+  apply Hbad.
+  eapply store_inv_lookup.
+  - exact Hcontra.
+  - apply dict_lookup_insert_eq.
+Qed.
+"""]
+
+    if witnesses:
+        for i, w in enumerate(witnesses):
+            store = w.get("store", {})
+            args = w.get("args", [])
+            computed = w.get("computed", {})
+            sku = args[0] if args else key
+            bad_row = _row_literal(info, computed)
+            lookup_row = _row_literal(
+                info, store.get(sku, computed) if sku in store else computed)
+            sigma = (f'{{[store_loc := LitDict {_store_literal(info, store)};'
+                     f'  trace_loc := LitList []]}}')
+            out.append(f"""
+(* ── candidate witness {i} ── *)
+Definition cex_{i} : CounterWitness := {{|
+  cw_store   := {_store_literal(info, store)};
+  cw_key     := "{sku}";
+  cw_args    := {_args_literal(info, args)};
+  cw_bad_row := {bad_row};
+|}}.
+
+(** pre of the contract holds on the witness — decidable. *)
+Lemma cex_{i}_pre_holds : gen_pre {sigma} cex_{i}.(cw_args).
+Proof.
+  unfold gen_pre.
+  exists "{sku}", {_args_exists(info, args)},
+    {_store_literal(info, store)}, {_row_exists(info, store, sku)}.
+  split; [reflexivity|].
+  split; [apply lookup_insert_eq|].
+  split; [reflexivity|].
+  split; [lia|].
+  exact I.
+Qed.
+
+(** the update computes to the offending row — reflexivity. *)
+Lemma cex_{i}_update_computes :
+  dict_insert_str cex_{i}.(cw_key) cex_{i}.(cw_bad_row) cex_{i}.(cw_store)
+  = {_store_literal(info, {sku: computed})}.
+Proof. vm_compute. reflexivity. Qed.
+
+(** the offending row violates the invariant — inversion + lia. *)
+Lemma cex_{i}_violates_inv : ~ row_inv cex_{i}.(cw_bad_row).
+Proof.
+  intros [oh [rs [rp [Heq [Hge1 [Hge2 Hle]]]]]].
+  injection Heq; intros; subst. lia.
+Qed.
+
+(** DISPROVED bundling theorem for candidate {i}. *)
+Theorem cex_{i}_preservation_false :
+  exists store_d k,
+    dict_lookup_str k store_d
+      = Some {lookup_row} /\\
+    ~ store_inv (dict_insert_str k cex_{i}.(cw_bad_row) store_d).
+Proof.
+  exists cex_{i}.(cw_store), cex_{i}.(cw_key).
+  split; [vm_compute; reflexivity |].
+  eapply {info.name}_preservation_negation_form.
+  - vm_compute. discriminate.
+  - exact cex_{i}_violates_inv.
+Qed.
+""")
+
+    out.append(f"""
+End gen_{info.name}_Lneg.""")
+
+    return "\n".join(out)
+
+
+def emit_layered(info: ContractInfo, source: str, out_dir: str,
+                 counter_witnesses: list[dict] | None = None) -> None:
     """Emit multiple .v files — one per dependency layer — plus
-    a _CoqProject and schedule.json for parallel proof execution."""
+    a _CoqProject and schedule.json for parallel proof execution.
+
+    counter_witnesses: optional list of candidate counter-examples
+    (from the scenario runner or authored), each shaped:
+
+        {"obligation": "invariant_preservation",
+         "store": {"SKU1": {"on_hand": 10, "reserved": 8,
+                            "reorder_point": 5}},
+         "args": ["SKU1", "ORDER1", 5],
+         "computed": {"on_hand": 10, "reserved": 13, "reorder_point": 5}}
+
+    They are materialized into <name>_Lneg.v as CounterWitness
+    definitions with computational satellite lemmas (see
+    docs/proof-counterexample-workflow.md).
+    """
     import json
     from pathlib import Path
 
@@ -909,6 +1137,29 @@ End gen_{info.name}_L{layer_num}."""
     _skill_src = Path(__file__).parent / "skill_snakelet_exn.md"
     (base / "_skill.md").write_text(_skill_src.read_text())
 
+    # Emit <name>_Lneg.v — evidential negation layer (candidate
+    # counter-examples + bundling theorems).
+    lneg_fname = f"{info.name}_Lneg.v"
+    (base / lneg_fname).write_text(_emit_lneg(info, arms, counter_witnesses))
+    project_lines.append(lneg_fname)
+    (base / "_CoqProject").write_text("\n".join(project_lines) + "\n")
+
+    # Emit statements.json — hash of every obligation statement, for
+    # the statement-immutability check (workflow doc §4.1).
+    obligations = []
+    for layer_num in sorted(layers):
+        for name, text in layers[layer_num]:
+            obligations.append({
+                "name": name,
+                "layer": layer_num,
+                "file": layer_files[str(layer_num)],
+                "statement_hash": _statement_hash(text),
+            })
+    (base / "statements.json").write_text(json.dumps({
+        "contract": info.name,
+        "obligations": obligations,
+    }, indent=2) + "\n")
+
     # Emit bench_spec.json — compile deps, prove phases, suite tagging.
     suite = source.split(":")[0].split(".")[1] if ":" in source else source
     sorted_layers = sorted(layers.keys())
@@ -932,7 +1183,9 @@ End gen_{info.name}_L{layer_num}."""
     }
     (base / "bench_spec.json").write_text(json.dumps(bench_spec, indent=2) + "\n")
 
-    # Emit schedule.json — parallel execution DAG (phases = [L0+L2, L1+L3])
+    # Emit schedule.json — parallel execution DAG.
+    # Phases: positive layers [L0+L2, L1+L3] plus Lneg (independent —
+    # certifies candidate witnesses in parallel with the positives).
     n_layers = len(sorted_layers)
     phases = []
     if n_layers >= 2:
@@ -942,6 +1195,7 @@ End gen_{info.name}_L{layer_num}."""
             {"files": phase1, "maxParallel": len(phase1)},
             {"files": phase2, "maxParallel": len(phase2)},
         ]
+    phases.append({"files": [lneg_fname], "maxParallel": 1})
     (base / "schedule.json").write_text(json.dumps({
         "contract": info.name,
         "phases": phases,

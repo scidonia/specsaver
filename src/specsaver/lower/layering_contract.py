@@ -72,7 +72,7 @@ emit_layering_contract = Contract(
             for i in range(r.num_layers)
         ),
         lambda s, a, r, s2: (
-            len(s2.observed.schedule["phases"]) == 2
+            len(s2.observed.schedule["phases"]) >= 2
         ),
     ],
     exceptions=[
