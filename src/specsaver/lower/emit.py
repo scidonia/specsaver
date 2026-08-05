@@ -925,14 +925,21 @@ def _row_exists(info: ContractInfo, store: dict, sku: str) -> str:
 
 
 def _emit_lneg(info: ContractInfo, arms: list,
-               witnesses: list[dict] | None) -> str:
+               witnesses: list[dict] | None) -> tuple[str, list[dict]]:
     """Emit <name>_Lneg.v — the evidential negation layer.
+
+    Returns (text, lneg_obligations) — the .v content and a list
+    of dicts mapping each bundling theorem to the positive obligation
+    it disproves.
 
     Contains the CounterWitness record, any candidate witnesses
     (materialized from runner JSON), computational satellite lemmas,
     and per-obligation bundling theorems.  See
     docs/proof-counterexample-workflow.md §5.
     """
+
+    lneg_meta: list[dict] = []
+
     key = _keys(info)[0]
 
     out = [f"""(* Evidential negation layer for [{info.name}].
@@ -980,11 +987,27 @@ Qed.
 
 (** Statement form for the invariant-preservation negation.
 
-    A DISPROVED verdict on o5 (invariant preservation) takes this
-    shape: a concrete key/delta whose updated store violates
-    store_inv.  Candidates below instantiate it; the prover
-    certifies or refutes each. *)
-Theorem {info.name}_preservation_negation_form : forall (cw : CounterWitness),
+    Each obligation's negation form is emitted per obligation group
+    (one form per distinct obligation targeted by the witnesses).
+    A bundling theorem proves that a concrete witness satisfies the
+    form, yielding a DISPROVED verdict for that obligation. *)
+
+"""]
+
+    # Group witnesses by obligation and emit per-obligation forms.
+    by_obligation: dict[str, list] = {}
+    if witnesses:
+        for w in witnesses:
+            obl = w.get("obligation") or "invariant_preservation"
+            by_obligation.setdefault(obl, []).append(w)
+    else:
+        by_obligation = {}
+
+    for obl_name in by_obligation:
+        # The negation form: invariants are violated by a concrete
+        # insert that breaks store_inv.
+        out.append(f"""
+Theorem {info.name}_obligation_{obl_name}_negation_form : forall (cw : CounterWitness),
   dict_lookup_str cw.(cw_key) cw.(cw_store) <> None ->
   ~ row_inv cw.(cw_bad_row) ->
   ~ store_inv (dict_insert_str cw.(cw_key) cw.(cw_bad_row) cw.(cw_store)).
@@ -995,10 +1018,10 @@ Proof.
   - exact Hcontra.
   - apply dict_lookup_insert_eq.
 Qed.
-"""]
+""")
 
-    if witnesses:
-        for i, w in enumerate(witnesses):
+    for obl_name in by_obligation:
+        for i, w in enumerate(by_obligation[obl_name]):
             store = w.get("store", {})
             args = w.get("args", [])
             computed = w.get("computed", {})
@@ -1044,7 +1067,7 @@ Proof.
 Qed.
 
 (** DISPROVED bundling theorem for candidate {i}. *)
-Theorem cex_{i}_preservation_false :
+Theorem cex_{i}_{obl_name}_false :
   exists store_d k,
     dict_lookup_str k store_d
       = Some {lookup_row} /\\
@@ -1052,16 +1075,21 @@ Theorem cex_{i}_preservation_false :
 Proof.
   exists cex_{i}.(cw_store), cex_{i}.(cw_key).
   split; [vm_compute; reflexivity |].
-  eapply {info.name}_preservation_negation_form.
+  eapply {info.name}_obligation_{obl_name}_negation_form.
   - vm_compute. discriminate.
   - exact cex_{i}_violates_inv.
 Qed.
 """)
+            lneg_meta.append({
+                "target": obl_name,
+                "theorem": f"cex_{i}_{obl_name}_false",
+                "source": None,  # filled in by emit_layered
+            })
 
     out.append(f"""
 End gen_{info.name}_Lneg.""")
 
-    return "\n".join(out)
+    return "\n".join(out), lneg_meta
 
 
 def emit_layered(info: ContractInfo, source: str, out_dir: str,
@@ -1136,7 +1164,10 @@ End gen_{info.name}_L{layer_num}."""
     # Emit <name>_Lneg.v — evidential negation layer (candidate
     # counter-examples + bundling theorems).
     lneg_fname = f"{info.name}_Lneg.v"
-    (base / lneg_fname).write_text(_emit_lneg(info, arms, counter_witnesses))
+    lneg_text, lneg_obligations = _emit_lneg(info, arms, counter_witnesses)
+    (base / lneg_fname).write_text(lneg_text)
+    for entry in lneg_obligations:
+        entry["source"] = lneg_fname
 
     # Emit _CoqProject — shared kernel via load path, no duplication.
     # `-Q <kernel_rel> ""` maps the shared kernel (SnakeletExnLang/Wp/
@@ -1173,6 +1204,7 @@ End gen_{info.name}_L{layer_num}."""
     (base / "statements.json").write_text(json.dumps({
         "contract": info.name,
         "obligations": obligations,
+        "lneg": lneg_obligations,
     }, indent=2) + "\n")
 
     # Emit bench_spec.json — compile deps, prove phases, suite tagging.

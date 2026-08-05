@@ -20,7 +20,7 @@ def test_discover_witness_finds_violation():
     """The unguarded impl breaks the invariant; the witness is packaged."""
     w = discover_witness(FAILING_ROW)
     assert w is not None
-    assert w["obligation"] == "invariant_preservation"
+    assert w["obligation"] == "o5_invariant_preservation"
     assert w["args"] == ["SKU1", "ORDER1", 5]
     assert w["store"]["SKU1"]["reserved"] == 8
     assert w["computed"]["reserved"] == 13
@@ -57,5 +57,5 @@ def test_emitted_lneg_compiles(tmp_path):
     text = lneg.read_text()
     assert "CounterWitness" in text
     assert "cex_0" in text
-    assert "preservation_negation_form" in text
-    assert "preservation_false" in text
+    assert "o5_invariant_preservation_negation_form" in text
+    assert "o5_invariant_preservation_false" in text

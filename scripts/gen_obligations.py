@@ -18,8 +18,30 @@ import sys
 from pathlib import Path
 
 from specsaver.lower.emit import emit_contract, emit_layered
-from specsaver.lower.harness import score
+from specsaver.lower.harness import _compile_file_in_dir, score
 from specsaver.lower.introspect import introspect_contract
+
+
+def _compile_project_files(out_dir: Path) -> None:
+    """Compile all .v files listed in the _CoqProject in order.
+
+    coqc picks up dependencies from .vo files in the same directory,
+    so compiling in _CoqProject order guarantees each file's deps
+    are ready before it's its turn.
+    """
+    coqproject = out_dir / "_CoqProject"
+    if not coqproject.exists():
+        return
+    for line in coqproject.read_text().strip().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped[0] in (None, "-", "#"):
+            continue
+        vf = out_dir / stripped
+        if vf.suffix == ".v" and vf.exists():
+            proc = _compile_file_in_dir(vf)
+            if proc.returncode != 0:
+                err = proc.stderr.split("\n")[0] if proc.stderr else "?"
+                print(f"  compile error {vf.name}: {err}")
 
 
 def main() -> int:
@@ -70,14 +92,15 @@ def main() -> int:
         out_dir = Path("coqgen") / info.name
         emit_layered(info, source, str(out_dir), counter_witnesses=witnesses)
         print(f"emitted layered to {out_dir}/")
-        # Score the definitions file (which proves the structural lemmas)
-        defs = out_dir / f"{info.name}_defs.v"
-        if defs.exists():
-            board = score(defs)
-            print(f"scoreboard (defs):\n{board.report()}")
-        else:
-            print("no defs file found")
+        # Compile all files in _CoqProject order before scoring.
+        _compile_project_files(out_dir)
+        # Score each layer file — the scoreboard is now three-valued
+        # (PROVED / DISPROVED / UNKNOWN) with Lneg detection.
         unknown = 0
+        for layer_v in sorted(out_dir.glob(f"{info.name}_L*.v")):
+            board = score(layer_v)
+            print(f"scoreboard ({layer_v.name}):\n{board.report()}")
+            unknown += sum(1 for s in board.results.values() if s == "UNKNOWN")
     else:
         text = emit_contract(info, source)
         out_dir = Path("coqgen")

@@ -158,7 +158,7 @@ def discover_witness(row: dict[str, str]) -> dict | None:
                 "reorder_point": p.reorder_point,
             }
     return {
-        "obligation": "invariant_preservation",
+        "obligation": "o5_invariant_preservation",
         "store": store,
         "args": [row["sku"], row["order"], int(row["quantity"])],
         "computed": computed.get(row["sku"], computed),
@@ -177,3 +177,6 @@ FAILING_ROW = {
     "reorder_point": "5",
     "outcome": "success",
 }
+
+# Canonical witness from FAILING_ROW: reserved 8→13 > on_hand 10.
+UNGUARDED_RESERVE_WITNESS = discover_witness(FAILING_ROW)

@@ -85,7 +85,7 @@ reserve_no_guard_contract = Contract(
 
 # The canonical witness for the DISPROVED verdict, in runner-JSON form.
 FALSE_RESERVE_WITNESS = {
-    "obligation": "invariant_preservation",
+    "obligation": "o5_invariant_preservation",
     "store": {"SKU1": {"on_hand": 10, "reserved": 8, "reorder_point": 5}},
     "args": ["SKU1", "ORDER1", 5],
     "computed": {"on_hand": 10, "reserved": 13, "reorder_point": 5},
