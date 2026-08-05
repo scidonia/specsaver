@@ -118,7 +118,9 @@ Proof.
   iApply "Hpost".
 Qed.
 
-(** WP refinement using the SnakeletExnTactics stage-tactic layer. *)
+(** WP refinement: full proof via sequential wp_bind_item steps,
+    following the ComputeAvailableLowering pattern with per-step
+    substitutions. *)
 Lemma restock_refines (sku : string) (qty : Z)
     (store_d_vals : list (sn_val * sn_val)) (oh rs rp : Z) :
   dict_lookup_str sku store_d_vals = Some (row_of oh rs rp) ->
@@ -127,10 +129,79 @@ Lemma restock_refines (sku : string) (qty : Z)
 Proof.
   iIntros (Hlookup) "Hstore".
   unfold restock_body.
-  (* The nested Let chain requires sequential wp_bind_item steps.
-     Each step decomposes one Let, evaluates its RHS, and substitutes.
-     The If uses EqOp which now returns LitBool false for
-     LitDict vs LitUnit (fixed in binop_eval). *)
-Admitted.
+
+  iApply (wp_bind_item (LetCtx "row" (If (BinOp EqOp (Var "row") (Val LitUnit)) (Raise (Val (LitExn "ProductNotFoundError" LitUnit))) (Let "_" (Let "store_d" (Load (Val (LitLoc store_loc))) (Let "old_row" (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]) (Let "new_row" (Let "_row_arg_0" (BinOp AddOp (Call "dict_lookup_str" [Val (LitString "on_hand"); Var "old_row"]) (Val (LitInt qty))) (Let "_row_arg_1" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "old_row"]) (Let "_row_arg_2" (Call "dict_lookup_str" [Val (LitString "reorder_point"); Var "old_row"]) (Call "row_of" [Var "_row_arg_0"; Var "_row_arg_1"; Var "_row_arg_2"])))) (Let "new_store" (Call "dict_insert_str" [Val (LitString sku); Var "new_row"; Var "store_d"]) (Let "_" (Store (Val (LitLoc store_loc)) (Var "new_store")) (Val LitUnit)))))) (Val (LitDict [(LitString "0", LitString sku); (LitString "1", LitInt qty)])))))); [reflexivity|].
+  iApply (wp_bind_item (LetCtx "store_d" (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]))); [reflexivity|].
+  iApply (wp_load with "Hstore").
+  iNext. iIntros "Hstore".
+  iApply wp_let.
+  iNext. cbn.
+  iApply wp_dict_lookup.
+  iIntros (v). iDestruct 1 as %Hdv.
+  assert (Some (row_of oh rs rp) = Some v) by congruence.
+  inversion H. subst v.
+  iApply wp_let.
+  iNext. cbn.
+  iApply (wp_bind_item (IfCtx (Raise (Val (LitExn "ProductNotFoundError" LitUnit))) (Let "_" (Let "store_d" (Load (Val (LitLoc store_loc))) (Let "old_row" (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]) (Let "new_row" (Let "_row_arg_0" (BinOp AddOp (Call "dict_lookup_str" [Val (LitString "on_hand"); Var "old_row"]) (Val (LitInt qty))) (Let "_row_arg_1" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "old_row"]) (Let "_row_arg_2" (Call "dict_lookup_str" [Val (LitString "reorder_point"); Var "old_row"]) (Call "row_of" [Var "_row_arg_0"; Var "_row_arg_1"; Var "_row_arg_2"])))) (Let "new_store" (Call "dict_insert_str" [Val (LitString sku); Var "new_row"; Var "store_d"]) (Let "_" (Store (Val (LitLoc store_loc)) (Var "new_store")) (Val LitUnit)))))) (Val (LitDict [(LitString "0", LitString sku); (LitString "1", LitInt qty)]))))); [reflexivity|].
+  iApply wp_binop.
+  iNext. cbn [binop_eval].
+  iApply wp_value.
+  cbn [binop_eval].
+  iApply wp_if_false.
+  iNext.
+  iApply (wp_bind_item (LetCtx "_" (Val (LitDict [(LitString "0", LitString sku); (LitString "1", LitInt qty)])))); [reflexivity|].
+  iApply (wp_bind_item (LetCtx "store_d" (Let "old_row" (Call "dict_lookup_str" [Val (LitString sku); Var "store_d"]) (Let "new_row" (Let "_row_arg_0" (BinOp AddOp (Call "dict_lookup_str" [Val (LitString "on_hand"); Var "old_row"]) (Val (LitInt qty))) (Let "_row_arg_1" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "old_row"]) (Let "_row_arg_2" (Call "dict_lookup_str" [Val (LitString "reorder_point"); Var "old_row"]) (Call "row_of" [Var "_row_arg_0"; Var "_row_arg_1"; Var "_row_arg_2"])))) (Let "new_store" (Call "dict_insert_str" [Val (LitString sku); Var "new_row"; Var "store_d"]) (Let "_" (Store (Val (LitLoc store_loc)) (Var "new_store")) (Val LitUnit))))))); [reflexivity|].
+  iApply (wp_load with "Hstore").
+  iNext. iIntros "Hstore".
+  iApply wp_let.
+  iNext. cbn.
+  iApply (wp_bind_item (LetCtx "old_row" (Let "new_row" (Let "_row_arg_0" (BinOp AddOp (Call "dict_lookup_str" [Val (LitString "on_hand"); Var "old_row"]) (Val (LitInt qty))) (Let "_row_arg_1" (Call "dict_lookup_str" [Val (LitString "reserved"); Var "old_row"]) (Let "_row_arg_2" (Call "dict_lookup_str" [Val (LitString "reorder_point"); Var "old_row"]) (Call "row_of" [Var "_row_arg_0"; Var "_row_arg_1"; Var "_row_arg_2"])))) (Let "new_store" (Call "dict_insert_str" [Val (LitString sku); Var "new_row"; Val (LitDict store_d_vals)]) (Let "_" (Store (Val (LitLoc store_loc)) (Var "new_store")) (Val LitUnit)))))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v1). iDestruct 1 as %Hdv1.
+  assert (Some (row_of oh rs rp) = Some v1) by congruence.
+  inversion H0. subst v1.
+  iApply wp_let.
+  iNext. cbn.
+  iApply (wp_bind_item (LetCtx "new_row" (Let "new_store" (Call "dict_insert_str" [Val (LitString sku); Var "new_row"; Val (LitDict store_d_vals)]) (Let "_" (Store (Val (LitLoc store_loc)) (Var "new_store")) (Val LitUnit))))); [reflexivity|].
+  iApply (wp_bind_item (LetCtx "_row_arg_0" (Let "_row_arg_1" (Call "dict_lookup_str" [Val (LitString "reserved"); Val (row_of oh rs rp)]) (Let "_row_arg_2" (Call "dict_lookup_str" [Val (LitString "reorder_point"); Val (row_of oh rs rp)]) (Call "row_of" [Var "_row_arg_0"; Var "_row_arg_1"; Var "_row_arg_2"]))))); [reflexivity|].
+  iApply (wp_bind_item (BinOpLCtx AddOp (LitInt qty))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v2). iDestruct 1 as %Hdv2.
+  cbn [dict_lookup_str] in Hdv2. inversion Hdv2. subst v2.
+  iApply wp_binop.
+  iNext. cbn [binop_eval].
+  iApply wp_value.
+  iApply wp_let.
+  iNext. cbn.
+  iApply (wp_bind_item (LetCtx "_row_arg_1" (Let "_row_arg_2" (Call "dict_lookup_str" [Val (LitString "reorder_point"); Val (row_of oh rs rp)]) (Call "row_of" [Val (LitInt (oh + qty)%Z); Var "_row_arg_1"; Var "_row_arg_2"])))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v3). iDestruct 1 as %Hdv3.
+  cbn [dict_lookup_str] in Hdv3. inversion Hdv3. subst v3.
+  iApply wp_let.
+  iNext. cbn.
+  iApply (wp_bind_item (LetCtx "_row_arg_2" (Call "row_of" [Val (LitInt (oh + qty)%Z); Val (LitInt rs); Var "_row_arg_2"]))); [reflexivity|].
+  iApply wp_dict_lookup.
+  iIntros (v4). iDestruct 1 as %Hdv4.
+  cbn [dict_lookup_str] in Hdv4. inversion Hdv4. subst v4.
+  iApply wp_let.
+  iNext. cbn.
+  iApply wp_row_of.
+  iApply wp_let.
+  iNext. cbn.
+  iApply (wp_bind_item (LetCtx "new_store" (Let "_" (Store (Val (LitLoc store_loc)) (Var "new_store")) (Val LitUnit)))); [reflexivity|].
+  iApply wp_dict_insert.
+  iApply wp_let.
+  iNext. cbn.
+  iApply (wp_bind_item (LetCtx "_" (Val LitUnit))); [reflexivity|].
+  iApply (wp_store with "Hstore").
+  iNext. iIntros "Hstore".
+  iApply wp_let.
+  iNext. cbn.
+  iApply wp_value.
+  iApply wp_let.
+  iNext. cbn.
+  iApply wp_value.
+  done.
+Qed.
 
 End restock_lowering.
