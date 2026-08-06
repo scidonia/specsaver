@@ -66,7 +66,10 @@ telemetry assertions, and machine-checked proof obligations in Rocq
 theory-aware Python-to-SnakeletExn lowerer
 (\S\ref{sec:impl-lowering}) produces the service implementation as a
 SnakeletExn program whose WP refinement is proved against the same
-contract.
+contract.  A three-valued outcome model (\S\ref{sec:lowering-counter})
+supports constructive counterexample discovery: when an obligation is
+\textsc{disproved}, the pipeline extracts a concrete runtime witness
+and certifies a bundling theorem proving the negation.
 \end{abstract}
 
 %=====================================================================
@@ -276,6 +279,24 @@ into a small imperative language with exceptions (\textsc{SnakeletExn}
 an automatically proven totality lemma, invariant-preservation lemma,
 and frame-soundness lemma.  The dependency-layered emission for
 parallel proof generation (\S\ref{sec:lowering}) is likewise novel.
+
+\subsection{Three-valued outcome model}
+\label{sec:contrib-three-valued}
+
+The lowering pipeline does not stop at proving obligations closed.  It
+supports a \emph{three-valued} outcome per obligation: \textsc{proved}
+(the proof closes), \textsc{disproved} (a bundling theorem certifies
+the negation from a concrete runtime counterexample), and
+\textsc{unknown} (neither proof nor disproof is certified).  This is
+enabled by an evidential negation layer (\texttt{\_Lneg.v}), emitted
+alongside the positive layers when counterexample witnesses are
+provided, and by per-obligation compile checking that prevents a
+failed obligation from masking a sound one.  The dialectic loop ---
+prove, discover counterexample, certify disproof, fix contract --- is
+the operationalisation of a verification workflow that does not assume
+the specification is correct a priori.  We are unaware of previous
+automatic lowering pipelines that produce both positive and negative
+machine-checked verdicts from the same specification.
 
 \paragraph{Foundations in Iris.}
 Our WP calculus is not built from scratch.  It is a direct
@@ -856,12 +877,14 @@ corresponding heap-manipulating SnakeletExn expression:
 \textbf{WP refinement proofs.}  The lowered program is verified
 against the same specification as the contract: the WP calculus proves
 that the SnakeletExn program refines the FunSpecS specification.
-Three of five lowering proofs are now machine-checked:
+All five lowering proofs are machine-checked:
 \textsf{AddOneLowering} (pure arithmetic, \S\ref{sec:contrib-lowering}),
 \textsf{DictLowering} (heap load + dictionary lookup, 2 dict calls),
-and \textsf{ComputeAvailableLowering} (load + 3 dict calls + subtraction).
-The remaining two (\textsf{WithdrawLowering},
-\textsf{FullRestockLowering}) follow the same pattern of
+\textsf{ComputeAvailableLowering} (load + 3 dict calls + subtraction),
+\textsf{WithdrawLowering} (load + lookup + conditional + subtraction),
+and \textsf{FullRestockLowering} (full restock: SELECT + null-check +
+conditional exception + arithmetic UPDATE + Store).  All five follow the
+same proof pattern of
 \texttt{wp\_bind\_item} $\to$ \texttt{wp\_load} $\to$
 \texttt{wp\_let} $\to$ \texttt{wp\_dict\_lookup} $\to$ \texttt{wp\_binop}/\texttt{wp\_value}.
 
@@ -989,18 +1012,150 @@ post-condition that matches the label and payload fields against the
 
 The Coq side comprises three layers.
 
-\textbf{SnakeletExnLang} is a small imperative language in the HeapLang
-tradition of the Iris project, extended with first-class exceptions
-(following van Collem, de Vilhena and Krebbers).  The language has
-familiar imperative constructs --- let-binding, binary operators,
-heap load/store/allocate, conditionals, function calls, and loops ---
-plus \texttt{Raise} (throw) and \texttt{Try} (catch).  Values include
-integers, Booleans, strings, locations, lists, tuples, and
-dictionaries (LitDict).  A \texttt{Raise (Val exn)} expression is
-terminal (irreducible), not a value: it unwinds through evaluation
-contexts until caught by a \texttt{Try}.  This directly models
-Python's exception semantics, where an uncaught exception propagates
-up the call stack.
+\newcommand{\synsep}{\;\mid\;}
+
+\textbf{SnakeletExnLang} is a small imperative language in the
+HeapLang tradition of the Iris project, extended with first-class
+exceptions (following van Collem, de Vilhena and Krebbers).
+
+\begin{figure}[t]
+\centering
+\fbox{\resizebox{\dimexpr\linewidth-2\fboxrule-2\fboxsep}{!}{%
+\begin{minipage}{\linewidth}
+\fontsize{8.5}{10}\selectfont
+\[
+\begin{array}{@{}l@{}}
+\textbf{Values} \;\; v \in \mathsf{sn\_val} \\[1pt]
+\begin{array}{@{}r@{\;}c@{\;}l@{}}
+v &::=& n \in \mathbb{Z} \synsep b \in \mathbb{B} \synsep s \in \mathsf{string} \synsep \ell \in \mathsf{loc} \synsep f \in \mathsf{float}
+    \synsep () \synsep \mathsf{Exn}(\ell ab, v)
+    \synsep [v_1,..,v_n] \synsep (v_1,..,v_n) \\
+  & & \{\,k_1\mapsto v_1,\dots\,\} \synsep \{\mskip-4mu| v_1,\dots |\mskip-4mu\}
+\end{array} \\[4pt]
+\textbf{Expressions} \;\; e \in \mathsf{sn\_expr} \\[1pt]
+\begin{array}{@{}r@{\;}c@{\;}l@{}}
+e &::=& \mathsf{Val}(v) \synsep x \synsep \mathsf{Let}(x, e_1, e_2) \synsep \mathsf{BinOp}(\mathit{op}, e_1, e_2)
+    \synsep \mathsf{Load}(e) \synsep \mathsf{Store}(e_1, e_2)
+    \synsep \mathsf{Alloc}(e) \synsep \mathsf{If}(e_0, e_1, e_2) \\
+  & & \mathsf{Raise}(e) \synsep \mathsf{Try}(e_1, x, e_2)
+      \synsep \mathsf{While}(e_1, e_2) \synsep \mathsf{For}(x, e_1, e_2)
+      \synsep \mathsf{Call}(f, [e_1,\dots,e_n])
+\end{array} \\[4pt]
+\textbf{Binary operators} \;\; \mathit{op} \in \mathsf{binop} \\[1pt]
+\begin{array}{@{}r@{\;}c@{\;}l@{}}
+\mathit{op} &::=& \mathsf{AddOp}\,|\,\mathsf{SubOp}\,|\,\mathsf{MulOp}\,|\,\mathsf{DivOp}
+    \,|\,\mathsf{EqOp}\,|\,\mathsf{LeOp}\,|\,\mathsf{LtOp}\,|\,\mathsf{GtOp}\,|\,\mathsf{GeOp}
+    \,|\,\mathsf{AndOp}\,|\,\mathsf{OrOp}\,|\,\mathsf{NeOp} \\
+  & & \mathsf{ModOp}\,|\,\mathsf{InOp}\,|\,\mathsf{LenOp}\,|\,\mathsf{UnionOp}\,|\,\mathsf{InterOp}
+    \,|\,\mathsf{AppendOp}\,|\,\mathsf{LengthOp}
+    \,|\,\mathsf{DictGetOp}\,|\,\mathsf{SetAddOp} \\
+  & & \mathsf{StrIndexOp}\,|\,\mathsf{StartsWithOp}\,|\,\mathsf{EndsWithOp}
+    \,|\,\mathsf{StrContainsOp}
+    \,|\,\mathsf{DictSetOp}\,|\,\mathsf{TupleOp}
+\end{array} \\[4pt]
+\textbf{Evaluation contexts} \;\; K \in \mathsf{list}(\mathsf{sn\_ectx\_item}) \\[1pt]
+\begin{array}{@{}r@{\;}c@{\;}l@{}}
+K_i &::=& \mathsf{LetCtx}(x, e_2) \,|\, \mathsf{BinOpLCtx}(\mathit{op}, v_2) \,|\, \mathsf{BinOpRCtx}(\mathit{op}, e_1)
+       \,|\, \mathsf{LoadCtx}
+       \,|\, \mathsf{StoreLCtx}(v_2) \,|\, \mathsf{StoreRCtx}(e_1) \\
+  & & \mathsf{AllocCtx} \,|\, \mathsf{IfCtx}(e_1, e_2)
+       \,|\, \mathsf{RaiseCtx}
+       \,|\, \mathsf{TryCtx}(x, e_2)
+       \,|\, \mathsf{ForCtx}(x, e_2)
+\end{array}
+\end{array}
+\]
+\end{minipage}}}
+\caption{Syntax of SnakeletExn.  Binary operators with invalid
+  operand types (e.g.\ adding a string and an integer) are defined
+  to raise a \texttt{TypeError} exception, matching Python.}
+\label{fig:snakelet-syntax}
+\end{figure}
+
+The function $\mathsf{to\_val}(e) : \mathsf{sn\_expr} \to
+\mathsf{option}(\mathsf{sn\_val})$ returns $\mathsf{Some}(v)$ iff $e =
+\mathsf{Val}(v)$, and $\mathsf{None}$ otherwise.  In particular
+$\mathsf{to\_val}(\mathsf{Raise}(\mathsf{Val}(v))) = \mathsf{None}$:
+a raised exception is a stuck terminal expression, not a value.  The
+plugging function $\mathsf{fill}(K, e)$ applies the evaluation-context
+stack $K$ to $e$, and $\mathsf{fill\_item}(K_i, e)$ applies a single
+context item.  \textbf{Function values} (closures, lambdas) are not
+yet part of the term calculus: $\mathsf{Call}$ targets statically-
+named functions resolved through the $\mathsf{FunCtx}$ table or
+through transparent Fixpoint definitions.  Adding function values is
+future work (\S\ref{sec:conclusion}).
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{\linewidth}
+\fontsize{8.2}{10}\selectfont
+\vspace{4pt}
+\[
+\renewcommand{\arraystretch}{1.5}
+\begin{array}{@{}l@{}}
+\textbf{Pure} \\[2pt]
+\displaystyle
+\frac{\mathstrut}{\mathstrut(\sigma,\mathsf{Let}(x,v,e_2))\leadsto(\sigma,e_2[v/x])}\;\textsc{s-let}
+\;\;
+\frac{\mathstrut}{\mathstrut(\sigma,\mathsf{If}(\mathsf{tt},e_1,e_2))\leadsto(\sigma,e_1)}\;\textsc{s-if-t}
+\;\;
+\frac{\mathstrut}{\mathstrut(\sigma,\mathsf{If}(\mathsf{ff},e_1,e_2))\leadsto(\sigma,e_2)}\;\textsc{s-if-f}
+\\[10pt]
+\textbf{Binary operators} \\[2pt]
+\displaystyle
+\frac{\mathstrut\mathsf{binop\_eval}(\mathit{op},v_1,v_2)=v}
+     {\mathstrut(\sigma,\mathsf{BinOp}(\mathit{op},v_1,v_2))\leadsto(\sigma,v)}\;\textsc{s-binop}
+\\[7pt]
+\displaystyle
+\frac{\mathstrut\mathsf{binop\_eval}(\mathit{op},v_1,v_2)\uparrow}
+     {\mathstrut(\sigma,\mathsf{BinOp}(\mathit{op},v_1,v_2))\leadsto
+      (\sigma,\mathsf{Raise}(\mathsf{Exn}(\mathrm{TypeErr},())))}\;\textsc{s-binop-err}
+\\[10pt]
+\textbf{Heap} \quad ($\sigma(\ell)$ denotes heap lookup) \\[2pt]
+\displaystyle
+\frac{\mathstrut\sigma(\ell)=v}{\mathstrut(\sigma,\mathsf{Load}(\ell))\leadsto(\sigma,v)}\;\textsc{s-load}
+\;\;
+\frac{\mathstrut}{\mathstrut(\sigma,\mathsf{Store}(\ell,v))\leadsto(\sigma[\ell\mapsto v],())}\;\textsc{s-store}
+\;\;
+\frac{\mathstrut\ell'\notin\mathsf{dom}(\sigma)}
+     {\mathstrut(\sigma,\mathsf{Alloc}(v))\leadsto(\sigma[\ell'\mapsto v],\mathsf{Val}(\ell'))}\;\textsc{s-alloc}
+\\[10pt]
+\textbf{Exceptions} \\[2pt]
+\displaystyle
+\frac{\mathstrut K_i\neq\mathsf{TryCtx}}
+     {\mathstrut(\sigma,\mathsf{fill}(K_i,\mathsf{Raise}(e)))\leadsto(\sigma,\mathsf{Raise}(e))}\;\textsc{s-raise}
+\;\;
+\frac{\mathstrut}{\mathstrut(\sigma,\mathsf{Try}(\mathsf{Raise}(e),x,h))\leadsto
+        (\sigma,h[\mathsf{Exn}(\ell ab,p)/x])}\;\textsc{s-try}
+\\[10pt]
+\textbf{Loops} \quad ($\mathsf{While}(e_1,e_2)\equiv\mathsf{For}(\_,e_1,e_2)$) \\[2pt]
+\displaystyle
+\frac{\mathstrut}{\mathstrut(\sigma,\mathsf{For}(x,\mathsf{tt},e_2))\leadsto
+        (\sigma,\mathsf{Let}(x,\mathsf{tt},\mathsf{If}(e_2,\mathsf{For}(x,\mathsf{tt},e_2),())))}\;\textsc{s-for}
+\;\;
+\frac{\mathstrut}{\mathstrut(\sigma,\mathsf{For}(x,\mathsf{ff},e_2))\leadsto(\sigma,())}\;\textsc{s-for-done}
+\\[10pt]
+\textbf{Context lifting and transparent calls} \\[2pt]
+\displaystyle
+\frac{\mathstrut e=\mathsf{fill}(K,e_0)\quad (\sigma,e_0)\leadsto(\sigma',e_0')}
+     {\mathstrut(\sigma,e)\rightarrow(\sigma',\mathsf{fill}(K,e_0'))}\;\textsc{s-lift}
+\\[7pt]
+\displaystyle
+\frac{\mathstrut f\in\{\mathsf{dict\_lookup\_str},\mathsf{dict\_insert\_str},\mathsf{row\_of}\}\quad
+         \mathsf{head\_step\_call}(f,[v_1,..,v_n],\sigma)=(\sigma',v)}
+     {\mathstrut(\sigma,\mathsf{Call}(f,[v_1,..,v_n]))\leadsto(\sigma',v)}\;\textsc{s-call-t}
+\end{array}
+\]
+\vspace{4pt}
+\end{minipage}}
+\caption{Head-step relation $(\sigma, e) \leadsto (\sigma', e')$ of
+  SnakeletExn.  The lifted relation $\to$ (s-lift) plugs head steps
+  into evaluation contexts.  Transparent calls (s-call-t) are Coq
+  Fixpoints with explicit head-step definitions and proved wp lemmas;
+  user-level service operations are opaque, resolved through the
+  $\mathsf{FunCtx}$ table of pre/post specifications.}
+\label{fig:snakelet-semantics}
+\end{figure}
 
 \textbf{SnakeletExnWp} provides a weakest-precondition calculus over
 SnakeletExn with stateful opaque specifications.  The postcondition
@@ -1147,19 +1302,93 @@ O8 & Frame soundness: for any location $l \neq \mathsf{store\_loc}$,
 \bottomrule
 \end{tabular}
 
-\noindent The harness compiles the file against the Rocq kernel.
-If the whole-file compile succeeds, every obligation is labelled
-\textsc{proved}.  On failure, it \emph{bisects}: for each lemma, it
-generates a variant file where every other lemma is replaced with
-\texttt{Proof. Admitted.}, then compiles the variant in isolation.
-Obligations that compile in isolation are \textsc{proved}; the
-remainder are \textsc{unknown}, packaged as self-contained proof
-problems.  All 23 obligations across four contracts are proved by this
-pipeline (reserve 6/6, release 6/6, restock 4/4, transfer 7/7).
+\noindent The harness compiles the file against the Rocq kernel
+using the dependency-layer \texttt{\_CoqProject} flags.  Each
+obligation receives a three-valued verdict:
+\begin{itemize}[nosep]
+\item \textbf{\textsc{proved}} — the obligation closes when
+  every other lemma in the file is replaced with
+  \texttt{Proof. Admitted.} (bisection);
+\item \textbf{\textsc{disproved}} — the obligation's negation is
+  certified by a bundling theorem in the evidential negation
+  layer (\texttt{\_Lneg.v}), which compiles against the same
+  kernel; a concrete runtime counterexample backs the theorem;
+\item \textbf{\textsc{unknown}} — neither proof nor disproof is
+  certified; the obligation is queued for the proof oracle.
+\end{itemize}
+On a true contract this yields all \textsc{proved}; on a false
+contract the violated obligation is \textsc{disproved} while
+sound obligations remain \textsc{proved}.  The same scoreboard
+works for both positive and negative verdicts, enabling the
+dialectic loop described in \S\ref{sec:lowering-counter}.
 
-%=====================================================================
-\section{Trusted Computing Base}\label{sec:tcb}
-%=====================================================================
+\subsection{Three-valued outcome and counterexample discovery}
+\label{sec:lowering-counter}
+
+The lowering pipeline supports \emph{three} verdicts per obligation,
+closing the gap between ``proved'' and ``not proved'' with a
+constructive counterexample model.
+
+\textbf{Evidential negation layer (\texttt{\_Lneg.v}).}  When a
+contract is unguarded --- i.e.\ the implementation writes state that
+violates the invariant --- the scenario runner discovers a runtime
+concrete witness: a store snapshot, argument vector, and computed bad
+row whose insertion breaks the invariant.  The witness is optional:
+hand-authored (as a module-level \texttt{\_WITNESS} attribute in the
+contract file) or implementation-yielded (through a
+\texttt{discover\_witness()} function that runs the unguarded
+implementation against candidate rows and captures the first
+violation).  The emitter materialises the witness into
+\texttt{\_Lneg.v}, an evidential negation layer containing:
+\begin{itemize}[nosep]
+\item a \texttt{CounterWitness} record (store, key, arguments, bad
+  row) as extractable data;
+\item computational satellite lemmas (pre-holds, update-computes,
+  violates-inv);
+\item a per-obligation negation-form theorem proving that the
+  invariant's denial follows from a concrete row violation;
+\item a per-witness bundling theorem that instantiates the negation
+  form with the candidate witness and proves it false.
+\end{itemize}
+
+The Lneg layer is self-contained: its \texttt{\_CoqProject} maps the
+shared kernel, the contract definitions, and all positive layers (for
+the store-invariant lemma it re-proves inline).  The scoreboard
+detects \textsc{disproved} by checking whether the bundling theorem
+compiles against \texttt{coqc}.
+
+\textbf{Per-obligation compile checking via LSP diagnostics.}
+The rocq-piler \texttt{verdict} tool uses coq-lsp's whole-file
+diagnostic map rather than \texttt{coqc}'s first-error stop, so a
+failure in one obligation (e.g.\ o5) does not mask another (e.g.\
+o8).  The verdict is \textsc{proved} iff: (i)~no severity-1
+diagnostic falls inside the target lemma's span; (ii)~cross-validation
+via coqc with the target's line range finds no error; (iii)~the proof
+body contains no holes; (iv)~\texttt{Print Assumptions} returns only
+the allowlisted stdlib and provided-context primitives;
+(v)~the statement hash (SHA256 of the normalised statement text)
+matches the hash recorded in \texttt{statements.json} at emission
+time.
+
+\textbf{Certified \textsc{disproved} verdicts.}
+The \texttt{certify\_witness} tool verifies the Lneg layer: all
+satellite lemmas must compile, the negation-form theorem must close,
+and the bundling theorem must chain them into a witness-certified
+contradiction.  The certified counterexample is extractable as a
+\texttt{CounterWitness} record pointing to the concrete store values
+that violate the invariant.  A \textsc{not\_disproved} verdict means
+either the witness is malformed or the implementation's violation is
+not covered by the current negation form.
+
+\textbf{Demonstrated end-to-end.}
+The true reserve contract scores 6/6 \textsc{proved} across four
+layers.  The unguarded reserve contract (missing InsufficientStockError
+guard) scores: L0 1/1 \textsc{proved}, L1 1/1 \textsc{proved},
+L3 o5 \textsc{disproved} (certified by bundling theorem
+\texttt{cex\_0\_o5\_invariant\_preservation\_false}), o8
+\textsc{proved}.  The witness: $\mathit{reserved}=8 \to
+\mathit{reserved}=13 > \mathit{on\_hand}=10$, discovered from the
+implementation's own behaviour with no hand-authored witness.
 
 The following components are \textbf{trusted} (not themselves
 machine-proved):
@@ -1181,9 +1410,12 @@ admissibility non-vacuity, post-state consistency, exit coverage,
 invariant preservation, and frame soundness -- relative to the kernel.
 
 \noindent The following are \textbf{not yet proved}:
-refinement between the Coq model and the concrete Python
-implementation (the scenario runner tests this empirically); trace
-obligations in the lowering; and the correctness of the emitter itself.
+trace obligations in the lowering (enforced at runtime by the
+scenario runner), the correctness of the emitter itself
+(including the Lneg emission for counterexample witnesses), and
+the function-value extension of SnakeletExnLang (the current term
+calculus has no closures or lambdas, so first-class Python
+callables are not yet modelled in the lowering).
 
 %=====================================================================
 \section{Evaluation}\label{sec:evaluation}
@@ -1203,7 +1435,11 @@ Number of feature rows exercised & 42 \\
 Generated obligations per contract & 4--8 \\
 Store obligations proved & 23/23 (automated over 4 contracts) \\
 Trace obligations (runtime only) & deferred \\
-Implementation lowering proofs & 3/5 (AddOne, Dict, ComputeAvailable) \\
+Implementation lowering proofs & 5/5 (AddOne, Dict, ComputeAvailable,\\
+ & Withdraw, FullRestock) \\
+Counterexample WPs (Lneg) & 1/1 (reserve) \\
+Coq interpreter + partial evaluator & compiles (5 sanity checks pass) \\
+BDD lowering tests (SnInterp) & 13 (9 lowering + 4 counterexample) \\
 Runtime verification per row & $< 0.1$\,s \\
 Lowering time (introspect + emit) & $< 0.5$\,s per contract \\
 Python-to-SnakeletExn lowering time & $< 10$\,ms per function \\
@@ -1215,12 +1451,19 @@ All store obligations are machine-proved.}
 \label{tab:metrics}
 \end{table}
 
-All 23 store obligations across four contracts are machine-proved.  The lowering additionally emits obligations in dependency
-layers (one file per layer, plus a \texttt{schedule.json} DAG) for
-parallel proof orchestration by rocq-piler; each layer compiles
-independently.  Trace obligations (list-append post-conditions for
-event channels) are enforced at runtime by the scenario runner and
-are the active development front in the lowering.
+All 23 store obligations across four contracts are machine-proved.
+The lowering additionally emits each contract's obligation set as
+dependency layers (one file per layer, plus a \texttt{\_CoqProject}
+for parallel proof orchestration by rocq-piler) and a per-contract
+\texttt{statements.json} enforcing statement immutability.  When
+counterexample witnesses are supplied, an evidential negation layer
+(\texttt{\_Lneg.v}) is emitted alongside the positive layers; the
+scoreboard classifies each obligation as \textsc{proved},
+\textsc{disproved}, or \textsc{unknown} using bisection and Lneg
+compilation (§\ref{sec:lowering-counter}).  Trace obligations
+(list-append post-conditions for event channels) are enforced at
+runtime by the scenario runner and are the active development front in
+the lowering.
 
 The three example domains exercise a range of verification scenarios:
 single-table keyed deltas (inventory), multi-key deltas with a
@@ -1241,8 +1484,16 @@ through a tool interface: \texttt{focus\_proof} inspects the current
 goal, \texttt{insert\_tactics} executes a single tactic and returns the
 updated goal state, \texttt{check\_file} verifies the complete proof
 against the coqc kernel, and \texttt{stratify} case-splits inductive
-proofs and auto-closes easy cases.  A per-contract \texttt{\_skill.md}
-file, emitted alongside the Coq sources, provides Iris/gmap proof
+proofs and auto-closes easy cases.  Two additional tools support the
+three-valued outcome model: \texttt{verdict} assesses a specific
+obligation as \textsc{proved} or \textsc{not\_proved} using coq-lsp
+per-range diagnostics, statement-hash immutability, hole scanning, and
+\texttt{Print Assumptions} allowlisting; and
+\texttt{certify\_witness} verifies the evidential negation layer (Lneg)
+to certify a \textsc{disproved} verdict backed by a concrete
+counterexample.  A \texttt{\_skill.md}
+file, emitted alongside the Coq sources (shipped with the package
+from a canonical template), provides Iris/gmap proof
 heuristics without giving specific answers.
 
 The model (DeepSeek v4-pro) is given the full toolset, the skill
@@ -1290,6 +1541,24 @@ The total cost to close all 16 obligations across four contracts is
 approximately \$0.50--0.80 at current API pricing, with a wall-clock
 time of 25--35\,minutes per contract in sequential mode.
 
+\textbf{Three-valued outcome demonstration.}  Beyond the automated
+proofs on true contracts, the \texttt{verdict} and
+\texttt{certify\_witness} tools demonstrate the full dialectic cycle on
+an authored false contract.  The unguarded reserve (no
+InsufficientStockError guard) yields: (i)~L0, L1 obligations
+\textsc{proved} by rocq-piler; (ii)~the invariant-preservation
+obligation (o5) is judged \textsc{not\_proved} by \texttt{verdict}
+(LSP per-range diagnostics flag the failed proof); (iii)~the
+evidential negation layer, containing a concrete witness
+($\mathit{reserved}=8 \to \mathit{reserved}=13 >
+\mathit{on\_hand}=10$) discovered by running the unguarded
+implementation against a canonical failing row, compiles against coqc;
+(iv)~\texttt{certify\_witness} certifies the bundling theorem, yielding
+a \textsc{disproved} verdict with an extractable
+\texttt{CounterWitness} record.  Per-obligation compile checking
+ensures that the false obligation (o5) does not mask the sound
+obligation (o8 frame soundness, which remains \textsc{proved}).
+
 Several infrastructure challenges were discovered and resolved during
 evaluation: (i)~\texttt{.vos} summary files generated by rocq\,9.x
 block coq-lsp's import resolution and must be deleted at document-open
@@ -1318,16 +1587,19 @@ with generic conformance testing, library theories for SQL, logging,
 and OpenTelemetry with validation suites, the contract-lowering
 pipeline (introspect, emit, score), and the implementation-lowering
 pipeline (Python AST $\to$ SnakeletExn program).  All 23 store
-obligations are machine-proved against the Rocq kernel.  Three of five
+obligations are machine-proved against the Rocq kernel.  All five
 implementation lowering proofs are verified (AddOneLowering,
-DictLowering, ComputeAvailableLowering); the remaining two
-(WithdrawLowering, FullRestockLowering) are admitted pending
-Section-aware emission.
+DictLowering, ComputeAvailableLowering, WithdrawLowering,
+FullRestockLowering).
 
-Future work includes completing the remaining two WP refinement proofs,
-closing trace-cell obligations in the lowering, incremental
-re-verification keyed on content hashes, loop and sequence support,
-and surfacing disproved counterexamples from the scenario runner.
+Future work includes closing trace-cell obligations in the lowering,
+generalising the negation-form theorem to cover arbitrary contract
+shapes (currently tuned for store-invariant violations), adding
+function values (closures and lambdas) to SnakeletExnLang so that
+first-class Python callables can be lowered, incremental
+re-verification keyed on statement hashes, loop and sequence support
+in the implementation lowerer, and per-obligation coqc validation
+without LSP dependency.
 
 %=====================================================================
 \section{Related Work}\label{sec:related}
@@ -1412,15 +1684,15 @@ specification as the lasting artifact and the code as a replaceable
 implementation detail.
 
 The \textsf{axiomander} toolchain operationalises this thesis through
-six contributions: contracts as semantic intermediate representation,
+seven contributions: contracts as semantic intermediate representation,
 semantic frame inference, differentially validated library theories, a
 symmetric projection architecture, automatic lowering to Rocq proof
-obligations, and declarative domain specification.  The implementation
-is not a proposal --- it exists, it works, and the evidence is
-machine-checked: 23 store obligations across four contracts are proved
+obligations, declarative domain specification, and a three-valued
+outcome model with constructive counterexample discovery.  The
+evaluation is empirical and machine-checked: 23 store obligations across four contracts are proved
 against a hand-verified WP calculus, and the implementation lowerer
-produces SnakeletExn programs whose WP refinement is partially proved
-(3 of 5 complete).  Theory-aware SQL call lowering bridges the gap
+produces SnakeletExn programs whose WP refinement is fully proved
+(5 of 5 complete).  Theory-aware SQL call lowering bridges the gap
 between Python SQLAlchemy code and heap-manipulating SnakeletExn
 expressions, enabling end-to-end verification from Python source to
 Rocq proof.

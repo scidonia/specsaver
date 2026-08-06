@@ -167,10 +167,11 @@ def reserve(self, engine, sku, order_id, quantity):
     return ReservationReceipt(sku=sku, quantity=quantity)
 ```
 
-<div class="text-xs text-gray-400 mt-2">
-This function knows nothing about Axiomander.  It's ordinary SQLAlchemy
-with transactions and domain exceptions.
-</div>
+ <div class="text-xs text-gray-400 mt-2">
+This function knows nothing about Axiomander.  The lowering pipeline
+translates it into a SnakeletExn program and proves WP refinement
+against the same contract — 5/5 proofs machine-checked (0 Admitted).
+ </div>
 
 ---
 
@@ -506,36 +507,38 @@ Operations interpreted over a pure, inspectable state model — not a mock.
 
 ---
 
-# From Python Predicate to Machine-Checked Theorem
+# From Python Predicate to Machine-Checked Verdict
 
 <div class="text-sm">
 
 ```text
-Python contract → mathematical propositions → Rocq proof kernel → verdict
+Python contract → mathematical propositions → Rocq proof kernel → three-valued verdict
 ```
 
 <div class="grid grid-cols-3 gap-4 mt-6">
 
 <div class="border border-green-900/40 rounded p-4 text-center">
 <span class="text-green-300 font-bold text-xl block">PROVED</span>
-<span class="text-xs text-gray-400">machine-checked by the kernel</span>
+<span class="text-xs text-gray-400">proof verified by the kernel</span>
+</div>
+
+<div class="border border-red-900/40 rounded p-4 text-center">
+<span class="text-red-300 font-bold text-xl block">DISPROVED</span>
+<span class="text-xs text-gray-400">negation certified from a concrete runtime witness</span>
 </div>
 
 <div class="border border-yellow-900/30 rounded p-4 text-center">
 <span class="text-yellow-300 font-bold text-xl block">UNKNOWN</span>
-<span class="text-xs text-gray-400">queued for AI-assisted proof</span>
-</div>
-
-<div class="border border-red-900/30 rounded p-4 text-center">
-<span class="text-red-300 font-bold text-xl block">COUNTEREXAMPLE</span>
-<span class="text-xs text-gray-400">concrete failure found at runtime</span>
+<span class="text-xs text-gray-400">neither proof nor disproof certified</span>
 </div>
 
 </div>
 
 <div class="mt-6 text-xs text-gray-400">
-The AI may propose proof scripts — but only the Rocq kernel validates them.
-Untrusted output is never accepted merely because a model produced it.
+When an obligation is DISPROVED, the pipeline extracts a concrete
+runtime counterexample and certifies a bundling theorem proving the
+negation — so the developer receives not a boolean but an extractable
+witness of what went wrong.
 </div>
 
 </div>
@@ -595,7 +598,7 @@ Both paths converge on a durable specification that survives code changes.
 
 <div>
 
-**Current prototype status:**
+**Store obligations (contract lowering):**
 
 <table class="text-xs w-full mt-2">
 <tr><th>Domain</th><th>Ops</th><th>Rows</th><th>Obligations</th></tr>
@@ -605,7 +608,21 @@ Both paths converge on a durable specification that survives code changes.
 </table>
 
 <div class="text-xs text-gray-400 mt-2">
-This demonstrates the end-to-end pipeline at prototype scale.
+All 16 rocq-piler obligations closed automatically by DeepSeek v4-pro.
+</div>
+
+**Implementation lowering (WP refinement):**
+
+<table class="text-xs w-full mt-2">
+<tr><th>Lowering proof</th><th>Status</th><th>Lowering proof</th><th>Status</th></tr>
+<tr><td>AddOneLowering</td><td>✓</td><td>WithdrawLowering</td><td>✓</td></tr>
+<tr><td>DictLowering</td><td>✓</td><td>FullRestock</td><td>✓</td></tr>
+<tr><td>ComputeAvailable</td><td>✓</td><td><b>Total</b></td><td><b>5/5 proved</b></td></tr>
+</table>
+
+<div class="text-xs text-gray-400 mt-2">
+Python AST → SnakeletExn let-chain → WP refinement against the same contract.
+5 of 5 machine-checked (0 Admitted).
 </div>
 
 </div>
@@ -618,7 +635,13 @@ This demonstrates the end-to-end pipeline at prototype scale.
 
 <div class="border-l-2 border-green-400 pl-2">
 <b>Proved:</b> store-obligation consistency, frame soundness,
-invariant preservation — checked by the Rocq kernel.
+invariant preservation, WP refinement for all 5 lowering proofs
+— checked by the Coq kernel.
+</div>
+
+<div class="border-l-2 border-red-400 pl-2">
+<b>Disproved:</b> the unguarded reserve contract — invariant
+violation certified by bundling theorem from concrete witness.
 </div>
 
 <div class="border-l-2 border-amber-400 pl-2">
@@ -626,15 +649,67 @@ invariant preservation — checked by the Rocq kernel.
 the library theory conforms to the real library behaviour.
 </div>
 
-<div class="border-l-2 border-red-400 pl-2">
-<b>Ongoing:</b> trace/event obligations, larger-scale evaluation,
-counterexample surfacing from the runner into the scoreboard.
+<div class="border-l-2 border-purple-400 pl-2">
+<b>Ongoing:</b> trace/event obligations, function values in
+SnakeletExnLang, larger-scale evaluation.
 </div>
 
 </div>
 
 </div>
 
+</div>
+
+---
+
+# The Dialectic Loop: Prove → Discover → Certify → Fix
+
+<div class="grid grid-cols-2 gap-6 mt-4 text-sm">
+
+<div>
+
+**When the contract is false,** the pipeline doesn't just fail —
+it surfaces a concrete witness:
+
+```json
+{
+  "obligation": "o5_invariant_preservation",
+  "store": { "SKU1": { "on_hand": 10,
+    "reserved": 8 }},
+  "args": ["SKU1", "ORDER1", 5],
+  "computed": { "reserved": 13, ... }
+}
+```
+
+<div class="text-xs text-gray-400 mt-2">
+reserved = 8 → 13, but on_hand = 10.
+The implementation violated its own invariant.
+</div>
+
+</div>
+
+<div>
+
+**The loop:**
+
+1. **Prove** — positive obligations close against the kernel
+2. **Discover** — scenario runner finds a runtime violation
+3. **Emit** — witness becomes an Lneg bundling theorem
+4. **Certify** — coqc verifies the negation: DISPROVED
+5. **Fix** — either the contract or the implementation
+
+<div class="mt-3 text-xs text-gray-400">
+Each cycle tightens the specification.  The scoreboard
+shows all three outcomes per obligation.
+</div>
+
+</div>
+
+</div>
+
+<div class="mt-6 text-center text-xs text-gray-400">
+True contract: 6/6 PROVED.  False contract: o5 DISPROVED, o8 PROVED.
+Both from the same pipeline, same kernel, same scoreboard.
 </div>
 
 ---
