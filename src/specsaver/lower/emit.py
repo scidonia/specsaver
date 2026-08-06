@@ -170,6 +170,77 @@ def _pre(info: ContractInfo) -> str:
     {_scalar_props(info)} /\\ ({avail_str(info) or "True"})."""
 
 
+def _post(info: ContractInfo) -> str:
+    d0 = info.deltas[0]
+    result_val = _field_var(d0.field, d0.key_arg)
+    return f"""Definition gen_post (sigma : sn_state) (vs : list sn_val)
+    (r : Result) (ups : cell_updates) : Prop :=
+  exists {_exist_vars(info)},
+    vs = [{_vs_args(info)}] /\\
+    sigma !! {_STORE_LOC} = Some (LitDict store_d) /\\
+    {_lookups(info)} /\\
+    r = RVal (LitInt {result_val}) /\\
+    ups = [({_STORE_LOC}, LitDict {_nested_insert(info)})]."""
+
+
+def _trace_event_dict(info: ContractInfo) -> str:
+    """Build a LitDict literal for the first trace event in info.traces."""
+    if not info.traces:
+        return "LitUnit"
+    t = info.traces[0]
+    arg_map = {"order_id": "order"}
+    pairs = []
+    for f in t.event_fields:
+        if f.kind == "args":
+            name = arg_map.get(f.expr, f.expr)
+            val = f"LitString {name}" if f.field_type == "str" else f"LitInt {name}"
+        elif f.kind == "result":
+            val = (
+                f"LitString _rsv_{f.expr}"
+                if f.field_type == "str" else f"LitInt _rsv_{f.expr}"
+            )
+        elif f.kind == "var":
+            val = f"LitString {f.expr}" if f.field_type == "str" else f"LitInt {f.expr}"
+        else:
+            val = "LitUnit"
+        pairs.append(f'(LitString "{f.name}", {val})')
+    return f"LitDict [{'; '.join(pairs)}]"
+
+
+def _trace_result_vars(info: ContractInfo) -> str:
+    """Extra existential variables for result-referenced trace fields."""
+    if not info.traces:
+        return ""
+    t = info.traces[0]
+    vars_ = [f"_rsv_{f.expr}" for f in t.event_fields if f.kind == "result"]
+    return " " + " ".join(vars_) if vars_ else ""
+
+
+def _trace_ups(info: ContractInfo) -> str:
+    """Build the trace_loc cell_update when traces exist."""
+    if not info.traces:
+        return ""
+    return (
+        f"       ({_TRACE_LOC}, LitList (trace_d ++ ["
+        f"{_trace_event_dict(info)}]))")
+
+
+def _gen_post_with_trace(info: ContractInfo) -> str:
+    """gen_post extended with trace_loc bindings and updates."""
+    d0 = info.deltas[0]
+    result_val = _field_var(d0.field, d0.key_arg)
+    return f"""Definition gen_post_with_trace (sigma : sn_state) (vs : list sn_val)
+    (r : Result) (ups : cell_updates) : Prop :=
+  exists {_exist_vars(info)} trace_d{_trace_result_vars(info)},
+    vs = [{_vs_args(info)}] /\\
+    sigma !! {_STORE_LOC} = Some (LitDict store_d) /\\
+    sigma !! {_TRACE_LOC} = Some (LitList trace_d) /\\
+    {_lookups(info)} /\\
+    r = RVal (LitInt {result_val}) /\\
+    ups = [({_STORE_LOC}, LitDict {_nested_insert(info)});
+{_trace_ups(info)}]."""
+
+
 def _nested_insert(info: ContractInfo) -> str:
     expr = "store_d"
     for d in info.deltas:
@@ -182,19 +253,6 @@ def _nested_insert(info: ContractInfo) -> str:
         expr = (f"(dict_insert_str {d.key_arg} "
                 f"{_row_call2(info, new_vals)} {expr})")
     return expr
-
-
-def _post(info: ContractInfo) -> str:
-    d0 = info.deltas[0]
-    result_val = _field_var(d0.field, d0.key_arg)
-    return f"""Definition gen_post (sigma : sn_state) (vs : list sn_val)
-    (r : Result) (ups : cell_updates) : Prop :=
-  exists {_exist_vars(info)},
-    vs = [{_vs_args(info)}] /\\
-    sigma !! {_STORE_LOC} = Some (LitDict store_d) /\\
-    {_lookups(info)} /\\
-    r = RVal (LitInt {result_val}) /\\
-    ups = [({_STORE_LOC}, LitDict {_nested_insert(info)})]."""
 
 
 def _exc_payload(info: ContractInfo, ex: ExitInfo) -> str:
@@ -760,6 +818,7 @@ Definition {_TRACE_LOC} : loc := Loc 2%positive.
         _store_inv(),
         _pre(info),
         _post(info),
+        *([_gen_post_with_trace(info)] if info.traces else []),
         *exc_texts,
         _table(info, arms),
         _totality_pure(info, arms),

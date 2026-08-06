@@ -195,7 +195,7 @@ def _find_traces(contract: Contract, row_fields, qty_arg) -> tuple[TraceInfo, ..
     return tuple(
         t for t in results
         if t.event_fields and all(
-            f.kind in ("args", "var") for f in t.event_fields
+            f.kind in ("args", "var", "result") for f in t.event_fields
         )
     )
 
