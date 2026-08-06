@@ -12,7 +12,7 @@ Unified guidance for Rocq proofs over SnakeletExn: contract obligations
 The `decide` typeclass from stdpp is opaque at Qed time —
 `destruct (decide (k = k))` produces a kernel-rejected proof term.
 Always use `rewrite decide_True; reflexivity` or
-`apply lookup_insert_eq` instead.
+`apply lookup_insert` instead.
 
 ### gmap singletons — CRITICAL
 **NEVER use `set`, `pose`, or `refine` for the sigma witness.**
@@ -24,7 +24,7 @@ but coqc rejects it. Always provide sigma directly inside `exists`:
 exists {[store_loc := LitDict [...]; trace_loc := LitList []]},
        [LitString "SKU1"; ...].
 split.
-  - ... apply lookup_insert_eq ...
+  - ... apply lookup_insert ...
   - ...
 
 (* WRONG — coq-lsp accepts, coqc rejects *)

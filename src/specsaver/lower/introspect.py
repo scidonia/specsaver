@@ -195,7 +195,8 @@ def _find_traces(contract: Contract, row_fields, qty_arg) -> tuple[TraceInfo, ..
     return tuple(
         t for t in results
         if t.event_fields and all(
-            f.kind in ("args", "var", "result") for f in t.event_fields
+            f.kind in ("args", "var", "result", "_opaque", "expr")
+            for f in t.event_fields
         )
     )
 
@@ -224,6 +225,21 @@ def _collect_trace(
                 log_field=log,
                 event_fields=tuple(fields),
             ))
+    # Handle implies(condition, extends_by_one(...)) pattern (edge-triggered)
+    if (isinstance(func, ast.Name) and func.id in ("implies",)
+            and len(body.args) == 2
+            and isinstance(body.args[1], ast.Call)):
+        _collect_trace(body.args[1], results, row_fields, qty_arg)
+    # Handle _gauge_reflects_state(g, new_s) — opaque trace predicate
+    if (isinstance(func, ast.Name) and func.id == "_gauge_reflects_state"
+            and len(body.args) >= 1):
+        # Extract log field from the old_s.observed.<X> pattern in the
+        # parent extends_by_one call.  Here we recognise the opaque
+        # predicate and create a placeholder trace.
+        pass  # handled upstream: the lambda body for gauge_log is a Call to
+              # _gauge_reflects_state.  _collect_trace recurses through
+              # BoolOp(And) nodes; direct Call bodies that aren't
+              # extends_by_one are skipped.
     if isinstance(body, ast.BoolOp) and isinstance(body.op, ast.And):
         for v in body.values:
             _collect_trace(v, results, row_fields, qty_arg)
@@ -255,6 +271,11 @@ def _extract_event_fields(
         if not (isinstance(child, ast.Compare)
                 and len(child.ops) == 1
                 and isinstance(child.ops[0], ast.Eq)):
+            # Opaque predicates: _gauge_reflects_state(g, new_s), etc.
+            # Emit a single opaque marker field so the trace is captured.
+            if (isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+                    and child.func.id in ("_gauge_reflects_state",)):
+                fields.append(("_opaque_gauge", "_opaque", "opaque"))
             continue
         left = child.left
         right = child.comparators[0]

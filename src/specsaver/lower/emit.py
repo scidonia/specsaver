@@ -199,6 +199,13 @@ def _trace_event_dict(info: ContractInfo) -> str:
                 f"LitString _rsv_{f.expr}"
                 if f.field_type == "str" else f"LitInt _rsv_{f.expr}"
             )
+        elif f.kind == "_opaque":
+            val = "LitUnit"  # opaque predicate, event shape deferred
+        elif f.kind == "expr":
+            val = (
+                f"LitString _rsv_{f.name}"
+                if f.field_type == "str" else f"LitInt _rsv_{f.name}"
+            )
         elif f.kind == "var":
             val = f"LitString {f.expr}" if f.field_type == "str" else f"LitInt {f.expr}"
         else:
@@ -530,7 +537,7 @@ def _o1(info: ContractInfo) -> str:
                              f"[{entries}]",
                              *(_witness_lits(info) for _ in keys)])
     lookups = "\n    ".join(
-        ["split; [apply lookup_insert_eq|]."]
+        ["split; [apply lookup_insert|]."]
         + ["split; [reflexivity|]."] * (len(keys) - 1)
     )
     row_inv_script = f"exists {lits}. split; [reflexivity|]. repeat split; lia."
@@ -763,6 +770,53 @@ Proof.
 Qed."""
 
 
+def _o6_trace(info: ContractInfo) -> str:
+    """O6: trace consistency — from the store post-condition, we can
+    exhibit a trace-extended post that also satisfies the trace event
+    predicate (the reservation_log event, etc.)."""
+    if not info.traces:
+        return ""
+    t = info.traces[0]
+    exist_args = _exists_args(info)
+    # Generate default witnesses for result/expr fields
+    wit_bindings = []
+    wit_vars = []
+    for f in t.event_fields:
+        if f.kind == "result":
+            n = f"_rsv_{f.expr}"
+            v = '""%string' if f.field_type == "str" else "0%Z"
+            wit_bindings.append(f'set ({n} := {v}).')
+            wit_vars.append(n)
+        elif f.kind == "expr":
+            n = f"_rsv_{f.name}"
+            v = f'"{f.expr}"%Z' if f.field_type == "int" else f'"{f.expr}"%string'
+            wit_bindings.append(f'set ({n} := {v}).')
+            wit_vars.append(n)
+    set_block = "\n  ".join(wit_bindings)
+    if set_block:
+        set_block += "\n  "
+    if wit_vars:
+        wit_args = ", " + ", ".join(wit_vars)
+    else:
+        wit_args = ""
+    return f"""
+(** O6: trace consistency — the store-level post can be extended with a
+    trace-location update matching the declared trace event shape. *)
+Lemma o6_trace_consistency : forall sigma vs r ups trace_d,
+  sigma !! {_TRACE_LOC} = Some (LitList trace_d) ->
+  gen_post sigma vs r ups ->
+  exists ups_t, gen_post_with_trace sigma vs r ups_t.
+Proof.
+  intros sigma vs r ups trace_d Htrace Hpost.
+  destruct Hpost as {_destruct_pat(info, ['Hvs', 'Hcell', 'Hlook', 'Hr', 'Hups'])}.
+  {set_block}exists [({_STORE_LOC}, LitDict {_nested_insert(info)});
+{_trace_ups(info)}].
+  unfold gen_post_with_trace.
+  exists {exist_args}, trace_d{wit_args}.
+  repeat split; auto.
+Qed."""
+
+
 def _obligations(info: ContractInfo, arms: list) -> str:
     return "\n".join([
         _store_inv_lookup(),
@@ -865,6 +919,10 @@ def _dependency_layers(info: ContractInfo) -> dict[int, list[tuple[str, str]]]:
         ("o5_invariant_preservation", _o5(info)),
         ("o8_frame_soundness", _o8(info)),
     ]
+    if info.traces:
+        layers[4] = [
+            ("o6_trace_consistency", _o6_trace(info)),
+        ]
     return layers
 
 
@@ -892,6 +950,7 @@ Definition {_TRACE_LOC} : loc := Loc 2%positive.""",
         _store_inv(),
         _pre(info),
         _post(info),
+        *([_gen_post_with_trace(info)] if info.traces else []),
         *exc_texts,
         _table(info, arms),
         _store_inv_lookup(),
@@ -1106,7 +1165,7 @@ Proof.
   exists "{sku}", {_args_exists(info, args)},
     {_store_literal(info, store)}, {_row_exists(info, store, sku)}.
   split; [reflexivity|].
-  split; [apply lookup_insert_eq|].
+  split; [apply lookup_insert|].
   split; [reflexivity|].
   split; [lia|].
   exact I.
