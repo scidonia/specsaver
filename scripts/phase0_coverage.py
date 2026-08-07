@@ -22,6 +22,18 @@ from specsaver.backend.contract_linter import ContractLinter
 from specsaver.render import _extract_return_expression_with_params
 
 
+def _module_functions(mod) -> dict[str, str]:
+    """Extract function sources from a module into {name: source}."""
+    import inspect
+    sources = {}
+    for name, obj in inspect.getmembers(mod, inspect.isfunction):
+        try:
+            sources[name] = inspect.getsource(obj)
+        except OSError:
+            pass
+    return sources
+
+
 def _contracts():
     from examples.bank_transfer.contract import transfer_contract
     from examples.inventory.contract import (
@@ -29,12 +41,14 @@ def _contracts():
         reserve_contract,
         restock_contract,
     )
+    import examples.bank_transfer.contract as bank_mod
+    import examples.inventory.contract as inv_mod
 
     return {
-        "transfer": transfer_contract,
-        "reserve": reserve_contract,
-        "release": release_contract,
-        "restock": restock_contract,
+        "transfer": (transfer_contract, bank_mod),
+        "reserve": (reserve_contract, inv_mod),
+        "release": (release_contract, inv_mod),
+        "restock": (restock_contract, inv_mod),
     }
 
 
@@ -55,13 +69,15 @@ def _clauses(contract):
         yield f"derives[{name}]", fn
 
 
-def classify(src: str, params: tuple[str, ...]) -> tuple[str, str]:
+def classify(src: str, params: tuple[str, ...],
+             function_sources: dict[str, str] | None = None) -> tuple[str, str]:
     """Return (status, detail) for one predicate source."""
     try:
         node = ast.parse(src, mode="eval").body
     except SyntaxError as exc:
         return "UNSUPPORTED", f"parse: {exc}"
-    linter = ContractLinter(params=list(params))
+    linter = ContractLinter(params=list(params),
+                            function_sources=function_sources)
     result = linter.lint_expression(node)
     if result.ir is None:
         kinds = {getattr(v, "kind", "?") for v in result.violations}
@@ -85,15 +101,18 @@ def classify(src: str, params: tuple[str, ...]) -> tuple[str, str]:
 
 
 def main() -> None:
+    import importlib, sys
     rows = []
-    for cname, contract in _contracts().items():
+    for cname, (contract, contract_mod) in _contracts().items():
+        func_sources = _module_functions(contract_mod)
         for kind, pred in _clauses(contract):
             src, params = _extract_return_expression_with_params(pred)
             if src is None:
                 rows.append((cname, kind, "UNSUPPORTED", "no-source",
                              getattr(pred, "__qualname__", "?")))
                 continue
-            status, detail = classify(src, params)
+            status, detail = classify(src, params,
+                                      function_sources=func_sources)
             snippet = src if len(src) <= 60 else src[:57] + "..."
             rows.append((cname, kind, status, detail, snippet))
 
@@ -106,11 +125,11 @@ def main() -> None:
     statuses = ("FULL", "OPAQUE", "VACUOUS", "TRIVIALIZED", "UNSUPPORTED")
     print(f"{'contract':<12} {'FULL':>5} {'OPAQ':>5} {'VAC':>5} {'TRIV':>5}"
           f" {'UNSUP':>6} {'total':>6}")
-    for cname in _contracts():
+    for cname, (contract, _mod) in _contracts().items():
         vals = [counts[cname, s] for s in statuses]
         print(f"{cname:<12} {vals[0]:>5} {vals[1]:>5} {vals[2]:>5}"
               f" {vals[3]:>5} {vals[4]:>6} {sum(vals):>6}")
-    totals = [sum(counts[c, s] for c in _contracts()) for s in statuses]
+    totals = [sum(counts[c, s] for c, _ in _contracts().items()) for s in statuses]
     print(f"{'TOTAL':<12} {totals[0]:>5} {totals[1]:>5} {totals[2]:>5}"
           f" {totals[3]:>5} {totals[4]:>6} {sum(totals):>6}")
     print()

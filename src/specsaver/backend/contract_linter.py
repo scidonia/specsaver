@@ -77,6 +77,16 @@ class LintResult:
 
 # ─── Linter (IR-emitting visitor) ─────────────────────────────────
 
+class _Subst(ast.NodeTransformer):
+    """Substitute variable names in an AST."""
+    def __init__(self, mapping: dict[str, ast.expr]):
+        self.mapping = mapping
+    def visit_Name(self, n: ast.Name) -> ast.expr:
+        if n.id in self.mapping:
+            return self.mapping[n.id]
+        return n
+
+
 class ContractLinter(ast.NodeVisitor):
     """Validates assert expressions and compiles to IR.
 
@@ -87,7 +97,8 @@ class ContractLinter(ast.NodeVisitor):
     def __init__(self, params: list[str] | None = None, context: str = "postcondition",
                   predicates: dict | None = None, unbound: frozenset[str] = frozenset(),
                   ghost_resolver: dict[str, str] | None = None,
-                  param_type_hint: dict[str, str] | None = None):
+                  param_type_hint: dict[str, str] | None = None,
+                  function_sources: dict[str, str] | None = None):
         self.violations: list[LintViolation] = []
         self.params = params or []
         self.context = context
@@ -97,6 +108,7 @@ class ContractLinter(ast.NodeVisitor):
         self.ghost_resolver: dict[str, str] = ghost_resolver or {}
         self.param_type_hint: dict[str, str] = param_type_hint or {}
         self.predicate_defs: dict[str, object] = {}  # name -> PredicateDef
+        self.function_sources: dict[str, str] = function_sources or {}
 
     def lint_expression(self, node: ast.expr) -> LintResult:
         """Convert a Python expression to IR. Returns LintResult with coq/smt."""
@@ -410,13 +422,6 @@ class ContractLinter(ast.NodeVisitor):
                 ir_args = [self.visit(a) for a in node.args]
                 ir_args = [a for a in ir_args if a is not None]
                 return PredicateCallExpr(name=name, args=ir_args)
-            class _Subst(ast_module.NodeTransformer):
-                def __init__(self, mapping):
-                    self.mapping = mapping
-                def visit_Name(self, n):
-                    if n.id in self.mapping:
-                        return self.mapping[n.id]
-                    return n
             mapping = {p: a for p, a in zip(param_names, node.args)}
             expanded = _Subst(mapping).visit(ast_module.fix_missing_locations(
                 ast_module.Module(body=[ast_module.Expr(value=body_expr)], type_ignores=[])
@@ -424,13 +429,6 @@ class ContractLinter(ast.NodeVisitor):
             inner_expr = expanded.body[0].value
             return self.visit(inner_expr)
         if post_asserts:
-            class _Subst(ast_module.NodeTransformer):
-                def __init__(self, mapping):
-                    self.mapping = mapping
-                def visit_Name(self, n):
-                    if n.id in self.mapping:
-                        return self.mapping[n.id]
-                    return n
             mapping = {p: a for p, a in zip(param_names, node.args)}
             mapping['result'] = ast_module.Constant(value=1)
             conjuncts = []
@@ -701,6 +699,11 @@ class ContractLinter(ast.NodeVisitor):
         # from the callee's OpaqueSpec.ghost_vars mapping.
         if name in self.ghost_resolver:
             return Var(name=self.ghost_resolver[name])
+        # Try to inline a known function from function_sources
+        if name in self.function_sources:
+            result = self._inline_call(node, name)
+            if result is not None:
+                return result
         # Unknown function call → opaque DB observer (OpaqueTerm → True)
         # opaque DB observer (e.g. db_get_payment_state(order_id)).
         # Compiles to True in Coq Prop; the real guarantee is discharged
@@ -709,6 +712,35 @@ class ContractLinter(ast.NodeVisitor):
         return OpaqueTerm(name=name, args=[
             self.visit(a) for a in node.args if self.visit(a) is not None
         ])
+
+    def _inline_call(self, node: ast.Call, name: str) -> Optional[Expr]:
+        """Inline a function call by substituting args into the function body."""
+        src = self.function_sources.get(name)
+        if not src:
+            return None
+        try:
+            func_ast = ast.parse(src.strip(), mode="exec")
+            if not func_ast.body or not isinstance(func_ast.body[0], ast.FunctionDef):
+                return None
+            func_def = func_ast.body[0]
+            if len(func_def.args.args) != len(node.args):
+                return None
+            # Find the return statement, skipping docstrings
+            body = None
+            for stmt in func_def.body:
+                if isinstance(stmt, ast.Return):
+                    body = stmt.value
+                    break
+            if body is None:
+                return None
+            # Substitute call args into function body
+            subs = {}
+            for param, arg in zip(func_def.args.args, node.args):
+                subs[param.arg] = arg
+            inlined = _Subst(subs).visit(body)
+            return self.visit(inlined)
+        except Exception:
+            return None
 
     def _extract_container_path(self, node: ast.expr) -> str | None:
         """Extract a dotted container path like state.observed.products
