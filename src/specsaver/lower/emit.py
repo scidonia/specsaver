@@ -1297,7 +1297,7 @@ End gen_{info.name}_L{layer_num}."""
     import os as _os
     repo_root = Path(__file__).resolve().parents[3]
     kernel_dir = repo_root / "coq"
-    kernel_rel = _os.path.relpath(kernel_dir, base)
+    kernel_rel = str(kernel_dir.resolve())
     project_lines = [f"-Q {kernel_rel} \"\"", "-R . \"\""] + [
         f"{info.name}_defs.v",
     ] + [layer_files[str(layer)] for layer in sorted(layer_files)] + [lneg_fname]
