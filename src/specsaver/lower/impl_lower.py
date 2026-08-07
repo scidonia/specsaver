@@ -154,6 +154,11 @@ def _lower_expr(node: pyast.expr) -> Expr:
             return SBinOp("SubOp", SInt(0), _lower_expr(node.operand))
         if isinstance(node.op, pyast.Not):
             return SIf(_lower_expr(node.operand), SInt(0), SInt(1))
+        if isinstance(node.op, pyast.UAdd):
+            return _lower_expr(node.operand)  # +x is identity
+        if isinstance(node.op, pyast.Invert):
+            return SBinOp("SubOp", SInt(-1), SBinOp("SubOp",
+                           SInt(0), _lower_expr(node.operand)))  # ~x as -x-1
         raise NotImplementedError(
             f"unary op {type(node.op).__name__}"
         )
