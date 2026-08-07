@@ -82,7 +82,7 @@ def iris_prop(node: Expr, *,
         "slice_len": _slice_len, "min": _min, "max": _max,
         "sum": _placeholder, "float": _float, "strlit": _str_lit,
         "tuple": _placeholder, "dict": _placeholder, "set": _placeholder,
-        "implies": _implies, "raises": _placeholder,
+        "implies": _implies, "raises": _raises,
         "is_shape": _is_shape, "is_valid": _is_valid,
         "list_eq": _list_eq, "re_match": _re_match,
         "string_contains": _string_contains,
@@ -410,6 +410,17 @@ def _conservative(n, ps, pv):
     """Return False for unsupported IR nodes — conservative: fails the
     proof obligation rather than silently accepting the contract."""
     return "False"
+
+
+def _raises(n, ps, pv):
+    """Compile a RaisesExpr to its condition as a Coq proposition.
+
+    The raise arm is compiled into the FunSpecS postcondition at the
+    emission level (emit.py), not at the individual expression level.
+    This handler compiles the inner condition for use within the
+    postcondition body.
+    """
+    return iris_prop(n.cond, param_set=ps, post_var=pv)
 
 
 def _placeholder(n, ps, pv):
