@@ -14,13 +14,33 @@ _STORE_LOC = "store_loc"
 _TRACE_LOC = "trace_loc"
 
 
+def _is_pure(info) -> bool:
+    """True for pure-function contracts (no keyed-map deltas)."""
+    return len(info.deltas) == 0
+
+
+def _qty_arg(info) -> str:
+    """The quantity arg name, or empty for pure contracts."""
+    return "" if _is_pure(info) else info.deltas[0].qty_arg
+
+
+def _d0_field(info) -> str:
+    """The first delta's field, or empty for pure."""
+    return "" if _is_pure(info) else info.deltas[0].field
+
+
+def _d0_key(info) -> str:
+    """The first delta's key arg, or empty for pure."""
+    return "" if _is_pure(info) else info.deltas[0].key_arg
+
+
 def _is_int_expr(s: str, info: ContractInfo) -> bool:
     """Is every identifier in the expression int-typed (int field vars,
     the qty arg, or numeric literals)?"""
     import re as _re
 
     int_fields = {f for f, _t in info.row_fields if _t == "int"}
-    qty = info.deltas[0].qty_arg
+    qty = _qty_arg(info)
     int_vars = int_fields | {
         _field_var(f, k) for k in _keys(info) for f in int_fields
     }
@@ -35,6 +55,8 @@ def _is_int_expr(s: str, info: ContractInfo) -> bool:
 
 def _z(s: str, info: ContractInfo) -> str:
     """Wrap in %Z scope iff the expression is int-typed."""
+    # Fix Python empty-string representation for Coq: '' → ""
+    s = s.replace("''", "\"\"")
     return f"({s})%Z" if _is_int_expr(s, info) else f"({s})"
 
 
@@ -59,6 +81,10 @@ def _field_var(field: str, key: str) -> str:
 
 
 def _keys(info: ContractInfo) -> list[str]:
+    if _is_pure(info):
+        # Use actual arg field names from row_fields (dataclass fields)
+        return [f for f, _ in info.row_fields
+                if f not in ("order", _qty_arg(info))]
     keys: list[str] = []
     for d in info.deltas:
         if d.key_arg not in keys:
@@ -125,9 +151,11 @@ def _store_inv() -> str:
 
 
 def _exist_vars(info: ContractInfo) -> str:
+    if _is_pure(info):
+        return " ".join(_keys(info) + ["order"])
     parts = [f"{k}" for k in _keys(info)]
     parts.append("order")
-    parts.append(info.deltas[0].qty_arg)
+    parts.append(_qty_arg(info))
     parts.append("store_d")
     for k in _keys(info):
         parts.extend(_field_var(f, k) for f in _row_fields(info))
@@ -143,11 +171,14 @@ def _exists_args(info: ContractInfo) -> str:
 def _vs_args(info: ContractInfo) -> str:
     parts = [f"LitString {k}" for k in _keys(info)]
     parts.append("LitString order")
-    parts.append(f"LitInt {info.deltas[0].qty_arg}")
+    if not _is_pure(info):
+        parts.append(f"LitInt {_qty_arg(info)}")
     return "; ".join(parts)
 
 
 def _lookups(info: ContractInfo) -> str:
+    if _is_pure(info):
+        return "True"
     lines = []
     for k in _keys(info):
         row = _row_call2(info, _defaults(info, k))
@@ -162,15 +193,27 @@ def _scalar_props(info: ContractInfo) -> str:
 
 
 def _pre(info: ContractInfo) -> str:
+    store_binding = (
+        ""
+        if _is_pure(info)
+        else f"sigma !! {_STORE_LOC} = Some (LitDict store_d) /\\\n    "
+    )
     return f"""Definition gen_pre (sigma : sn_state) (vs : list sn_val) : Prop :=
   exists {_exist_vars(info)},
     vs = [{_vs_args(info)}] /\\
-    sigma !! {_STORE_LOC} = Some (LitDict store_d) /\\
-    {_lookups(info)} /\\
+    {store_binding}{_lookups(info)} /\\
     {_scalar_props(info)} /\\ ({avail_str(info) or "True"})."""
 
 
 def _post(info: ContractInfo) -> str:
+    if _is_pure(info):
+        return (
+            "Definition gen_post (sigma : sn_state) (vs : list sn_val)\n"
+            "    (r : Result) (ups : cell_updates) : Prop :=\n"
+            "  exists " + _exist_vars(info) + ",\n"
+            "    vs = [" + _vs_args(info) + "] /\\\n"
+            "    r = RVal LitUnit /\\ ups = []."
+        )
     d0 = info.deltas[0]
     result_val = _field_var(d0.field, d0.key_arg)
     return f"""Definition gen_post (sigma : sn_state) (vs : list sn_val)
@@ -320,9 +363,13 @@ def _table(info: ContractInfo, arms: list) -> str:
 
 
 def _destruct_pat(info: ContractInfo, hyps: list[str]) -> str:
-    names = [*_keys(info), "order", info.deltas[0].qty_arg, "store_d"]
-    for k in _keys(info):
-        names.extend(_field_var(f, k) for f in _row_fields(info))
+    names = [*_keys(info), "order"]
+    if not _is_pure(info):
+        names.append(_qty_arg(info))
+        names.append("store_d")
+        for k in _keys(info):
+            names.extend(_field_var(f, k) for f in _row_fields(info))
+    names = [n for n in names if n]  # filter empty (e.g. "" qty for pure)
     for h in hyps:
         if h == "Hlook":
             names.extend(f"Hlook_{k}" for k in _keys(info))
@@ -335,25 +382,32 @@ def _destruct_pat(info: ContractInfo, hyps: list[str]) -> str:
 
 
 def _totality(info: ContractInfo, arms: list) -> str:
-    d0 = info.deltas[0]
     eqbs = ",\n           ".join(
         [f'(String.eqb f "{info.name}") eqn:E']
         + [f'(String.eqb f "{info.name}_exc{i}") eqn:E{i + 2}'
            for i in range(len(arms))]
     )
-    # The success entry matches whenever the head eqb fires — both the
-    # (E-true, Ei-true) and (E-true, Ei-false) branches are success, so
-    # solve them all at once with a chained script.
-    success_script = (
-        f"injection Hfe as Heq; subst pre post; "
-        f"destruct Hpre as "
-        f"{_destruct_pat(info, ['Hvs', 'Hcell', 'Hlook', 'Hsc', 'Havail'])}; "
-        f"exists (RVal (LitInt {_field_var(d0.field, d0.key_arg)})), "
-        f"[({_STORE_LOC}, LitDict {_nested_insert(info)})]; "
-        f"split; [exists {_exists_args(info)}; repeat split; auto "
-        f"| unfold updates_dom_in; constructor; [|constructor]; "
-        f"simpl; rewrite Hcell; eexists; reflexivity]"
-    )
+    if _is_pure(info):
+        success_script = (
+            f"injection Hfe as Heq; subst pre post; "
+            f"destruct Hpre as "
+            f"{_destruct_pat(info, ['Hvs', 'Hsc'])}; "
+            f"exists (RVal LitUnit), []; "
+            f"split; [exists {_exists_args(info)}; repeat split; auto "
+            f"| unfold updates_dom_in; constructor]"
+        )
+    else:
+        d0 = info.deltas[0]
+        success_script = (
+            f"injection Hfe as Heq; subst pre post; "
+            f"destruct Hpre as "
+            f"{_destruct_pat(info, ['Hvs', 'Hcell', 'Hlook', 'Hsc', 'Havail'])}; "
+            f"exists (RVal (LitInt {_field_var(d0.field, d0.key_arg)})), "
+            f"[({_STORE_LOC}, LitDict {_nested_insert(info)})]; "
+            f"split; [exists {_exists_args(info)}; repeat split; auto "
+            f"| unfold updates_dom_in; constructor; [|constructor]; "
+            f"simpl; rewrite Hcell; eexists; reflexivity]"
+        )
     bullets = [f"  all: try solve [{success_script}]."]
     for i, (_n, _u1, _u2) in enumerate(arms):
         ex = info.exits[i]
@@ -488,9 +542,9 @@ def _final_tactic(info: ContractInfo) -> str:
     avail = avail_str(info)
     if avail is None:
         if parts:
-            parts[-1] = parts[-1].replace("|].", " | exact I].")
+            parts[-1] = parts[-1].replace("|].", " | auto].")
             return "\n    ".join(parts)
-        return "exact I"
+        return "auto"
     if info.exits and len(info.exits[0].when_clauses) > 1:
         avail_tac = ("split; [try (right; lia); try (left; lia) | "
                      "try reflexivity; try lia; try congruence]")
@@ -527,6 +581,22 @@ def _witness_lits(info: ContractInfo) -> str:
 
 
 def _o1(info: ContractInfo) -> str:
+    if _is_pure(info):
+        keys = _keys(info)
+        vs = "; ".join([*(f'LitString "{k.upper()}1"' for k in keys),
+                        'LitString "O1"'])
+        exists_vars = ", ".join([*(f'"{k.upper()}1"' for k in keys), '"O1"'])
+        return f"""
+(** O1: admissibility sanity — some state and args satisfy pre. *)
+Lemma o1_admissibility_sanity :
+  exists sigma vs, gen_pre sigma vs.
+Proof.
+  exists ({{[ {_TRACE_LOC} := LitList [] ]}}),
+         [{vs}].
+  exists {exists_vars}.
+  split; [reflexivity|].
+  {_final_tactic(info)}
+Qed."""
     keys = _keys(info)
     row = _witness_row(info)
     lits = _witness_lits(info)
@@ -607,7 +677,7 @@ def _o4(info: ContractInfo) -> str:
     int_vars = " ".join(
         _field_var(f, k) for k in _keys(info)
         for f, _t in info.row_fields if _t == "int"
-    ) + " " + info.deltas[0].qty_arg
+    ) + (" " + _qty_arg(info) if not _is_pure(info) else "")
     str_vars = " ".join(
         _field_var(f, k) for k in _keys(info)
         for f, _t in info.row_fields if _t == "str"
@@ -818,15 +888,18 @@ Qed."""
 
 
 def _obligations(info: ContractInfo, arms: list) -> str:
-    return "\n".join([
-        _store_inv_lookup(),
+    parts = []
+    if not _is_pure(info):
+        parts.append(_store_inv_lookup())
+    parts.extend([
         _o1(info),
         _o2(info),
         _o3s(info, arms),
         _o4(info),
-        _o5(info),
-        _o8(info),
     ])
+    if not _is_pure(info):
+        parts.extend([_o5(info), _o8(info)])
+    return "\n".join(p for p in parts if p)
 
 
 def _witness_rows(info: ContractInfo) -> tuple[str, str]:
@@ -867,14 +940,15 @@ Context `{{FC : FunCtx}}.
 Definition {_STORE_LOC} : loc := Loc 1%positive.
 Definition {_TRACE_LOC} : loc := Loc 2%positive.
 """,
-        _row_ctor(info),
-        _row_inv(info),
-        _store_inv(),
+        *([_row_ctor(info)] if not _is_pure(info) else []),
+        *([_row_inv(info)] if not _is_pure(info) else []),
+        *([_store_inv()] if not _is_pure(info) else []),
         _pre(info),
         _post(info),
         *([_gen_post_with_trace(info)] if info.traces else []),
         *exc_texts,
         _table(info, arms),
+        *([_store_inv_lookup()] if not _is_pure(info) else []),
         _totality_pure(info, arms),
         _totality(info, arms),
         *[_preservation_lemma(info, d, i) for i, d in enumerate(info.deltas)],
@@ -911,14 +985,15 @@ def _dependency_layers(info: ContractInfo) -> dict[int, list[tuple[str, str]]]:
         )
     )
     layers[1] = layer1
-    l3 = [("store_inv_lookup", _store_inv_lookup())]
-    for i, d in enumerate(info.deltas):
-        l3.append((f"gen_preserves_inv_{i}", _preservation_lemma(info, d, i)))
-    layers[2] = l3
-    layers[3] = [
-        ("o5_invariant_preservation", _o5(info)),
-        ("o8_frame_soundness", _o8(info)),
-    ]
+    if not _is_pure(info):
+        l3 = [("store_inv_lookup", _store_inv_lookup())]
+        for i, d in enumerate(info.deltas):
+            l3.append((f"gen_preserves_inv_{i}", _preservation_lemma(info, d, i)))
+        layers[2] = l3
+        layers[3] = [
+            ("o5_invariant_preservation", _o5(info)),
+            ("o8_frame_soundness", _o8(info)),
+        ]
     if info.traces:
         layers[4] = [
             ("o6_trace_consistency", _o6_trace(info)),
@@ -945,15 +1020,15 @@ Context `{{FC : FunCtx}}.
 
 Definition {_STORE_LOC} : loc := Loc 1%positive.
 Definition {_TRACE_LOC} : loc := Loc 2%positive.""",
-        _row_ctor(info),
-        _row_inv(info),
-        _store_inv(),
+        *([_row_ctor(info)] if not _is_pure(info) else []),
+        *([_row_inv(info)] if not _is_pure(info) else []),
+        *([_store_inv()] if not _is_pure(info) else []),
         _pre(info),
         _post(info),
         *([_gen_post_with_trace(info)] if info.traces else []),
         *exc_texts,
         _table(info, arms),
-        _store_inv_lookup(),
+        *([_store_inv_lookup()] if not _is_pure(info) else []),
         _totality_pure(info, arms),
         _totality(info, arms),
         "#[global] Instance gen_fun_ctx : FunCtx :=\n"

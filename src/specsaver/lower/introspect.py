@@ -107,7 +107,10 @@ def _body(pred) -> ast.expr:
 
 def _validate_frame(contract: Contract, map_field: str,
                     deltas: tuple[DeltaInfo, ...]) -> tuple[str, ...]:
-    """Every map write must be one of the deltas; logs deferred to v2."""
+    """Every map write must be one of the deltas; logs deferred to v2.
+
+    When deltas is empty (pure-function contract), every write is a log
+    channel."""
     from specsaver.frames import parse_write_path
 
     expected = {(map_field, d.key_arg, d.field) for d in deltas}
@@ -121,7 +124,7 @@ def _validate_frame(contract: Contract, map_field: str,
             log_writes.append(w)
         elif path.key is None:
             raise UnsupportedShapeError(f"map write path needs a key: {w!r}")
-        elif (path.field, path.key, path.attr) not in expected:
+        elif expected and (path.field, path.key, path.attr) not in expected:
             raise UnsupportedShapeError(
                 f"write state.{path.field}[{path.key}].{path.attr} is not a "
                 f"delta of this contract — the spec would write outside its "
@@ -173,7 +176,7 @@ def _find_deltas(contract: Contract) -> tuple[DeltaInfo, ...]:
         if d not in matches:
             matches.append(d)
     if not matches:
-        raise UnsupportedShapeError("no delta clause found in ensures")
+        return ()  # pure-function contracts have no keyed-map deltas
     qty_args = {d.qty_arg for d in matches}
     if len(qty_args) > 1:
         raise UnsupportedShapeError(
