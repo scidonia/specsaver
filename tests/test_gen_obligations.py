@@ -70,11 +70,12 @@ def test_emit_and_score_inventory_siblings(tmp_path, contract_name):
         assert status == "PROVED", f"{name}: {status}"
 
 
-def test_no_delta_is_loud():
+def test_no_delta_is_pure_mode():
+    """No-delta contracts lower as pure-function mode (O1+O2 only)."""
     from examples.inventory.service import InventoryService
     from examples.inventory.types import Product, ReserveArgs
     from specsaver.contract_model import Contract
-    from specsaver.lower.introspect import UnsupportedShapeError, introspect_contract
+    from specsaver.lower.introspect import introspect_contract
 
     no_delta = Contract(
         InventoryService.reserve,
@@ -88,8 +89,9 @@ def test_no_delta_is_loud():
         ],
         writes={"state.products[sku].reserved"},
     )
-    with pytest.raises(UnsupportedShapeError, match="no delta clause"):
-        introspect_contract(no_delta, Product, "products", "sku")
+    info = introspect_contract(no_delta, Product, "products", "sku")
+    assert len(info.deltas) == 0
+    assert len(info.scalars) == 1  # quantity > 0
 
 
 def test_multi_exit_and_multi_delta_supported(tmp_path):
