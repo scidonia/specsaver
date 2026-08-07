@@ -634,7 +634,8 @@ class ContractLinter(ast.NodeVisitor):
         if name == "sum":
             if node.args and isinstance(node.args[0], ast.Name):
                 return SumExpr(name=node.args[0].id)
-            # sum(1 for x in xs if p(x)) → countb (fun x => p_coq(x)) xs
+            # sum(1 for x in xs if p(x)) → countb
+            # sum(p.field for p in container.values()) → SumExpr with container
             if node.args and isinstance(node.args[0], ast.GeneratorExp):
                 gen = node.args[0]
                 elt = gen.elt
@@ -651,6 +652,15 @@ class ContractLinter(ast.NodeVisitor):
                                 arg=list_name,
                                 predicate=f"(fun {var_name} => {pred_coq})"
                                     if pred_coq else "(fun _ => true)")
+                # sum(p.field for p in container.values())
+                # Extract container name from iter: container.observed.products.values()
+                for comp in gen.generators:
+                    if (isinstance(comp.iter, ast.Call)
+                            and isinstance(comp.iter.func, ast.Attribute)
+                            and comp.iter.func.attr == "values"):
+                        container_path = self._extract_container_path(comp.iter.func.value)
+                        if container_path and isinstance(elt, ast.Attribute):
+                            return SumExpr(name=f"{container_path}_{elt.attr}")
             return IntLit(value=0)
         if name in ("all", "any"):
             return self._translate_quantifier(node, name)
@@ -696,6 +706,17 @@ class ContractLinter(ast.NodeVisitor):
         return OpaqueTerm(name=name, args=[
             self.visit(a) for a in node.args if self.visit(a) is not None
         ])
+
+    def _extract_container_path(self, node: ast.expr) -> str | None:
+        """Extract a dotted container path like state.observed.products
+        into an underscore-separated identifier."""
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            base = self._extract_container_path(node.value)
+            if base:
+                return f"{base}_{node.attr}"
+        return None
 
     def _compile_comprehension_filter(self, var_name: str,
                                        ifs: list[ast.expr]) -> str | None:

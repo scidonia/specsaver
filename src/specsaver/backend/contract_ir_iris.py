@@ -552,6 +552,8 @@ def _collect_vars(node: Expr) -> set[str]:
             out.update(_collect_vars(o))
     elif k == "dict_len":
         out.update(_collect_vars(node.key))
+    elif k == "sum":
+        out.add(node.name)
     elif k == "dict_count":
         pass  # DictCountExpr has no Var children
     elif k == "index":
