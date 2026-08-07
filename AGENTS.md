@@ -44,3 +44,9 @@ uv run pytest     # run tests
 - Never push unless explicitly asked.
 - Run `uv run pytest` after every change.
 - Run `uv run ruff check .` to lint.
+
+## Coq build
+```bash
+opam install coq-stdpp coq-iris  # one-time (~30 min)
+bash scripts/build_coq.sh          # compiles all 18 Coq files
+```
