@@ -659,8 +659,11 @@ class ContractLinter(ast.NodeVisitor):
                             and isinstance(comp.iter.func, ast.Attribute)
                             and comp.iter.func.attr == "values"):
                         container_path = self._extract_container_path(comp.iter.func.value)
-                        if container_path and isinstance(elt, ast.Attribute):
-                            return SumExpr(name=f"{container_path}_{elt.attr}")
+                        if container_path:
+                            if isinstance(elt, ast.Attribute):
+                                return SumExpr(name=f"{container_path}_{elt.attr}")
+                            if isinstance(elt, ast.BinOp):
+                                return SumExpr(name=container_path)
             return IntLit(value=0)
         if name in ("all", "any"):
             return self._translate_quantifier(node, name)
