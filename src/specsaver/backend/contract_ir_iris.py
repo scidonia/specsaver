@@ -383,8 +383,9 @@ def _sum_list(n, ps, pv):
 
 
 def _dict_len(n, ps, pv):
-    """Compile DictLenExpr — length of a dict model."""
-    return f"(Z.of_nat (length ({n.name})))"
+    """Compile DictLenExpr — membership check via dict_lookup_str."""
+    key_coq = iris_prop(n.key, param_set=ps, post_var=pv)
+    return f"(dict_lookup_str {key_coq} ({n.name}%list) <> None)"
 
 
 def _dict_count(n, ps, pv):
@@ -549,6 +550,16 @@ def _collect_vars(node: Expr) -> set[str]:
     elif k == "logical":
         for o in getattr(node, "operands", []):
             out.update(_collect_vars(o))
+    elif k == "dict_len":
+        out.update(_collect_vars(node.key))
+    elif k == "dict_count":
+        pass  # DictCountExpr has no Var children
+    elif k == "index":
+        out.update(_collect_vars(node.index))
+    elif k == "len":
+        pass  # LenExpr has no Var children (only name: str)
+    elif k == "field_access":
+        out.update(_collect_vars(node.obj))
     elif k == "implies":
         out.update(_collect_vars(node.left))
         out.update(_collect_vars(node.right))
