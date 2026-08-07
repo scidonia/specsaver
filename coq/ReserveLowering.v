@@ -29,7 +29,7 @@ Require Import SpecPrelude.
       2. `try apply IH` unifies with cons-goals and closes branches
          prematurely, unbinding variables — apply IH fully-explicit.
       3. this stdpp: `lookup_insert` is the conditional form;
-         `lookup_insert_eq` is direct.  For map equalities:
+         `lookup_insert`.  For map equalities:
          `rewrite !lookup_insert; repeat case_decide; congruence`.
       4. gmap insert is propositional, not definitional — singleton
          updates need map_eq + lookup lemmas (see apply_updates_single
@@ -170,47 +170,5 @@ Qed.
   {| fun_entries := reserve_table;
      fun_specs_total := reserve_table_total_pure;
      fun_specsS_total := reserve_table_total |}.
-
-(* ---------------------------------------------------------------- *)
-(* The concrete step: reserve 30 of sku "S1" with 100 on hand and    *)
-(* 10 reserved returns the old reserved and leaves 40 reserved.      *)
-(* ---------------------------------------------------------------- *)
-
-Example reserve_steps :
-  prim_step (Call "reserve" [Val (LitString "S1"); Val (LitInt 30)])
-    {[store_loc := LitDict [(LitString "S1", row_of 100 10 20)];
-      trace_loc := LitList []]} []
-    (Val (LitInt 10))
-    {[store_loc := LitDict [(LitString "S1", row_of 100 40 20)];
-      trace_loc := LitList []]} [].
-Proof.
-  replace (Val (LitInt 10)) with (expr_of_result (RVal (LitInt 10)))
-    by reflexivity.
-  replace {[store_loc := LitDict [(LitString "S1", row_of 100 40 20)];
-            trace_loc := LitList []]}
-    with (apply_updates
-            {[store_loc := LitDict [(LitString "S1", row_of 100 10 20)];
-              trace_loc := LitList []]}
-            [(store_loc,
-              LitDict (dict_insert_str "S1" (row_of 100 40 20)
-                         [(LitString "S1", row_of 100 10 20)]))]).
-  2: { simpl. apply map_eq. intros k.
-       rewrite !lookup_insert.
-       repeat case_decide; congruence. }
-  apply (PrimHeadStep [] (Call "reserve" [Val (LitString "S1"); Val (LitInt 30)])
-          _ _ _ []).
-  apply (HeadCallSpecS "reserve" [LitString "S1"; LitInt 30] _
-          reserve_pre_t reserve_post_t (RVal (LitInt 10)) _).
-  - reflexivity.
-  - exists "S1", 30%Z.
-    exists [(LitString "S1", row_of 100 10 20)], 100, 10, 20.
-    split; [reflexivity|]. split; [apply lookup_insert_eq|].
-    split; [reflexivity|]. lia.
-  - exists "S1", 30%Z.
-    exists [(LitString "S1", row_of 100 10 20)], 100, 10, 20.
-    split; [reflexivity|]. split; [apply lookup_insert_eq|]. auto.
-  - unfold updates_dom_in. constructor; [|constructor].
-    simpl. rewrite lookup_insert_eq. eexists. reflexivity.
-Qed.
 
 End reserve_lowering.

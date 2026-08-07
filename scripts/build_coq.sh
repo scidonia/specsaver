@@ -8,14 +8,16 @@ FILES=(
   coq/ListPredicates.v
   coq/DictModel.v
   coq/SnakeletLang.v
-  coq/SnakeletEval.v
   coq/SnakeletExnLang.v
   coq/SnakeletExnWp.v
+  coq/SpecPrelude.v
+  coq/SnakeletEval.v
+  coq/SnakeletExnPartial.v
   coq/SnakeletExnTactics.v
   coq/SnakeletExnDemo.v
   coq/SnakeletExnSpecSDemo.v
-  coq/SpecPrelude.v
   coq/ReserveLowering.v
+  coq/ReleaseLowering.v
   coq/AddOneLowering.v
   coq/DictLowering.v
   coq/ComputeAvailableLowering.v
@@ -28,4 +30,3 @@ for f in "${FILES[@]}"; do
   coqc -R coq "" "$f"
 done
 echo "all coq artifacts compiled"
-  coq/ReleaseLowering.v
