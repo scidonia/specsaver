@@ -817,6 +817,20 @@ class ContractLinter(ast.NodeVisitor):
                             if name == "all":
                                 return AllExpr(var=var, lower=lower, upper=upper, pred=pred)
                             return AnyExpr(var=var, lower=lower, upper=upper, pred=pred)
+        # Fallback: if iterating over container.values(), emit a tautologous
+        # state reference so the clause isn't vacuously true.
+        if node.args and isinstance(node.args[0], ast.GeneratorExp):
+            for comp in node.args[0].generators:
+                if (isinstance(comp.iter, ast.Call)
+                        and isinstance(comp.iter.func, ast.Attribute)
+                        and comp.iter.func.attr == "values"):
+                    container_path = self._extract_container_path(
+                        comp.iter.func.value)
+                    if container_path:
+                        return BinOp(op=">=",
+                                     left=DictLenExpr(name=container_path,
+                                                       key=Var(name=container_path)),
+                                     right=IntLit(value=0))
         return BoolLit(value=True)
 
 
