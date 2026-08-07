@@ -119,7 +119,9 @@ _BINOP_MAP = {
     pyast.Lt: "LtOp",
     pyast.Gt: "GtOp",
     pyast.Eq: "EqOp",
-    pyast.NotEq: "EqOp",  # lowered to ¬(a = b) at the expression level
+    pyast.NotEq: "NeOp",  # lowered to ¬(a = b) at the expression level
+    pyast.Mod: "ModOp",
+    pyast.FloorDiv: "DivOp",
 }
 
 
@@ -129,6 +131,12 @@ def _lower_expr(node: pyast.expr) -> Expr:
             return SInt(node.value)
         if isinstance(node.value, str):
             return SString(node.value)
+        if isinstance(node.value, float):
+            return SString(str(node.value))  # lowered as string literal
+        if isinstance(node.value, bool):
+            return SInt(1 if node.value else 0)
+        if node.value is None:
+            return SUnit()
         raise NotImplementedError(
             f"constant type {type(node.value).__name__}"
         )
@@ -144,6 +152,8 @@ def _lower_expr(node: pyast.expr) -> Expr:
     if isinstance(node, pyast.UnaryOp):
         if isinstance(node.op, pyast.USub):
             return SBinOp("SubOp", SInt(0), _lower_expr(node.operand))
+        if isinstance(node.op, pyast.Not):
+            return SIf(_lower_expr(node.operand), SInt(0), SInt(1))
         raise NotImplementedError(
             f"unary op {type(node.op).__name__}"
         )
@@ -159,12 +169,34 @@ def _lower_expr(node: pyast.expr) -> Expr:
             if isinstance(node.ops[0], pyast.IsNot):
                 eq = SBinOp("EqOp", _lower_expr(node.left), SUnit())
                 return SIf(eq, SInt(0), SInt(1))  # negated equality
+        # Chained comparisons: a < b < c  →  (a < b) and (b < c)
+        if len(node.ops) > 1:
+            parts: list[Expr] = []
+            lhs = node.left
+            for op_node, rhs_node in zip(node.ops, node.comparators, strict=True):
+                op = _BINOP_MAP.get(type(op_node))
+                if op is None:
+                    raise NotImplementedError(
+                        f"chained compare op {type(op_node).__name__}"
+                    )
+                parts.append(SBinOp(op, _lower_expr(lhs),
+                                    _lower_expr(rhs_node)))
+                lhs = rhs_node
+            result = parts[0]
+            for p in parts[1:]:
+                result = SIf(result, p, SInt(0))
+            return result
         raise NotImplementedError("complex comparisons")
     if isinstance(node, pyast.BoolOp):
         if isinstance(node.op, pyast.And):
             lhs = _lower_expr(node.values[0])
             for v in node.values[1:]:
                 lhs = SIf(lhs, _lower_expr(v), SInt(0))
+            return lhs
+        if isinstance(node.op, pyast.Or):
+            lhs = _lower_expr(node.values[0])
+            for v in node.values[1:]:
+                lhs = SIf(lhs, SInt(1), _lower_expr(v))
             return lhs
         raise NotImplementedError(
             f"bool op {type(node.op).__name__}"
@@ -192,12 +224,35 @@ def _lower_expr(node: pyast.expr) -> Expr:
                 "dict_lookup_str",
                 (_lower_expr(node.slice), _lower_expr(node.value)),
             )
-        raise NotImplementedError("non-constant subscript")
+        # Non-constant subscript: dict_lookup_str(dyn_key, container)
+        return SCall(
+            "dict_lookup_str",
+            (_lower_expr(node.slice), _lower_expr(node.value)),
+        )
     if isinstance(node, pyast.Tuple):
         return SRec(tuple(
             (str(i), _lower_expr(elt))
             for i, elt in enumerate(node.elts)
         ))
+    if isinstance(node, pyast.List):
+        return SRec(tuple(
+            (str(i), _lower_expr(elt))
+            for i, elt in enumerate(node.elts)
+        ))
+    if isinstance(node, pyast.Dict):
+        fields: list[tuple[str, Expr]] = []
+        for k_node, v_node in zip(node.keys, node.values, strict=True):
+            if k_node is None:
+                continue  # skip ** unpacking
+            if isinstance(k_node, pyast.Constant) and isinstance(k_node.value, str):
+                fields.append((k_node.value, _lower_expr(v_node)))
+            elif isinstance(k_node, pyast.Constant):
+                fields.append((str(k_node.value), _lower_expr(v_node)))
+            else:
+                fields.append(("_key", SCall("dict_lookup_str",
+                                             (_lower_expr(k_node),
+                                              _lower_expr(v_node)))))
+        return SRec(tuple(fields))
     raise NotImplementedError(
         f"expression {type(node).__name__}: {pyast.dump(node)[:80]}"
     )
@@ -231,13 +286,28 @@ def _lower_stmt(stmt: pyast.stmt, rest: Expr) -> Expr:
     if isinstance(stmt, pyast.Return):
         return _lower_expr(stmt.value) if stmt.value else SUnit()
     if isinstance(stmt, pyast.Assign):
-        if len(stmt.targets) == 1 and isinstance(stmt.targets[0],
-                                                  pyast.Name):
-            return SLet(
-                stmt.targets[0].id,
-                _lower_expr(stmt.value),
-                rest,
-            )
+        if len(stmt.targets) == 1:
+            tgt = stmt.targets[0]
+            if isinstance(tgt, pyast.Name):
+                return SLet(tgt.id, _lower_expr(stmt.value), rest)
+            if isinstance(tgt, pyast.Tuple):
+                # Tuple unpacking: a, b = expr → let-chain of subscripts.
+                rhs = stmt.value
+                # Don't hoist — just subscript into a tuple-encoded SRec.
+                result = rest
+                for i, elt in reversed(list(enumerate(tgt.elts))):
+                    if isinstance(elt, pyast.Name):
+                        field = SCall(
+                            "dict_lookup_str",
+                            (SString(str(i)),
+                             _lower_expr(rhs) if i == 0 else SVar("_rhs")),
+                        )
+                        if i == 0:
+                            result = SLet("_rhs", _lower_expr(rhs),
+                                          SLet(elt.id, field, result))
+                        else:
+                            result = SLet(elt.id, field, result)
+                return result
         raise NotImplementedError("multi-target / non-name assignment")
     if isinstance(stmt, pyast.If):
         else_body = rest
@@ -270,9 +340,9 @@ def _lower_stmt(stmt: pyast.stmt, rest: Expr) -> Expr:
             h_body,
         )
     if isinstance(stmt, pyast.Expr):
-        # Expression statement: evaluate for side effect, then continue.
-        # The result is discarded — sequence with a Let that ignores it.
         return SLet("_", _lower_expr(stmt.value), rest)
+    if isinstance(stmt, pyast.Pass):
+        return rest
     raise NotImplementedError(
         f"statement {type(stmt).__name__}: {pyast.dump(stmt)[:80]}"
     )

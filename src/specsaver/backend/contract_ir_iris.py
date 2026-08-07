@@ -81,7 +81,7 @@ def iris_prop(node: Expr, *,
         "dict_count": _placeholder, "all": _all, "any": _any,
         "slice_len": _slice_len, "min": _min, "max": _max,
         "sum": _placeholder, "float": _float, "strlit": _str_lit,
-        "tuple": _placeholder, "dict": _placeholder, "set": _placeholder,
+        "tuple": _tuple_val, "dict": _dict_val, "set": _set_val,
         "implies": _implies, "raises": _raises,
         "is_shape": _is_shape, "is_valid": _is_valid,
         "list_eq": _list_eq, "re_match": _re_match,
@@ -377,11 +377,35 @@ def _is_valid(n, ps, pv):
     return " /\\ ".join(f"({p})" for p in parts) if parts else "True"
 
 
+def _tuple_val(n, ps, pv):
+    """Compile a TupleExpr to a LitTuple literal."""
+    elts = [iris_prop(e, param_set=ps, post_var=pv) for e in n.elements]
+    args = "; ".join(elts)
+    return f"(LitTuple [{args}])"
+
+
+def _dict_val(n, ps, pv):
+    """Compile a DictExpr to a LitDict literal."""
+    pairs = []
+    for k, v in zip(n.keys, n.values):
+        k_coq = iris_prop(k, param_set=ps, post_var=pv)
+        v_coq = iris_prop(v, param_set=ps, post_var=pv)
+        pairs.append(f"({k_coq}, {v_coq})")
+    return f"(LitDict [{' ; '.join(pairs)}])"
+
+
+def _set_val(n, ps, pv):
+    """Compile a SetExpr to a LitSet literal."""
+    elts = [iris_prop(e, param_set=ps, post_var=pv) for e in n.elements]
+    args = "; ".join(elts)
+    return f"(LitSet [{args}])"
+
+
 def _is_shape(n, ps, pv):
     """is_shape(obj, Type) — structural check.  For Iris, models are
     always well-typed at the sn_val level; field existence is enforced
     by the type system.  Compile to True."""
-    return "False"
+    return "True"
 
 
 def _index(n, ps, pv):
