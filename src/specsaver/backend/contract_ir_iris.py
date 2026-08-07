@@ -246,7 +246,7 @@ def _all(n, ps, pv):
         return f"(forall ({n.var} : Z), {lo} <= {n.var} < {hi} -> {p})"
     if n.lst:
         # Resolve the container variable through the full iris pipeline
-        lst_var = iris_prop(Var(n.lst), param_set=ps, post_var=pv)
+        lst_var = iris_prop(Var(name=n.lst), param_set=ps, post_var=pv)
         # Replace bound variable with local binder _v (word-boundary safe)
         import re
         p_subst = re.sub(rf'\b{n.var}\b', '_v', p)
@@ -278,7 +278,7 @@ def _any(n, ps, pv):
     if n.lst:
         import re
         p = iris_prop(n.pred, param_set=inner_ps, post_var=pv)
-        lst_var = iris_prop(Var(n.lst), param_set=ps, post_var=pv)
+        lst_var = iris_prop(Var(name=n.lst), param_set=ps, post_var=pv)
         p_subst = re.sub(rf'\b{n.var}\b', '_v', p)
         return (
             f"(existsb (fun (_v : sn_val) => "
@@ -426,7 +426,7 @@ def _is_shape(n, ps, pv):
 def _index(n, ps, pv):
     """lst[i] — list index lookup via nth on model list."""
     idx = iris_prop(n.index, param_set=ps, post_var=pv)
-    container = _var(Var(n.name), ps, pv)
+    container = _var(Var(name=n.name), ps, pv)
     # nth returns the sn_val at index; extract Z for int lists
     return (
         f"(match nth (Z.to_nat ({idx})) ({container}) (LitInt 0) with "
@@ -438,7 +438,7 @@ def _index(n, ps, pv):
 
 def _list_eq(n, ps, pv):
     """result == [] or result != [] — length comparison on model list."""
-    container = _var(Var(n.name), ps, pv)
+    container = _var(Var(name=n.name), ps, pv)
     op = "=" if n.op == "=" else "<>"
     return (
         f"(Z.of_nat (List.length ({container})) {op} {n.n_elements})"
