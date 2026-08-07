@@ -45,11 +45,21 @@ Definition eval_pure_step (e : sn_expr) : option sn_expr :=
   match e with
   | Let x (Val v) e2 => Some (subst x v e2)
   | Let x (BinOp op (Val v1) (Val v2)) e2 =>
-      (* Evaluate the BinOp first, then the Let *)
       Some (Let x (Val (binop_eval op v1 v2)) e2)
   | BinOp op (Val v1) (Val v2) => Some (Val (binop_eval op v1 v2))
   | If (Val (LitBool true)) e1 e2 => Some e1
   | If (Val (LitBool false)) e1 e2 => Some e2
+  (* ── Try / Raise pure steps ── *)
+  | Try (Val v) _x _h => Some (Val v)
+  | Try (Raise (Val (LitExn lbl pay))) x h =>
+      Some (subst x (LitExn lbl pay) h)
+  (* ── Raise unwinding through neutral contexts ── *)
+  | Let _x (Raise (Val _v)) _e2 => Some e
+  | BinOp _op (Raise (Val _v)) _e2 => Some e
+  | BinOp _op (Val _v1) (Raise (Val _v2)) =>
+      Some (Raise (Val _v2))
+  | If (Raise (Val _v)) _e1 _e2 => Some e
+  | Raise (Val _v) => Some e  (* stuck terminal *)
   | _ => None
   end.
 
