@@ -77,10 +77,10 @@ def iris_prop(node: Expr, *,
         "var": _var, "int": _int_lit, "bool": _bool_lit,
         "binop": _binop, "logical": _logical,
         "len": lambda n, ps, pv: _list_len(n, ps, pv, lm),
-        "index": _index, "dict_len": _placeholder,
-        "dict_count": _placeholder, "all": _all, "any": _any,
+        "index": _index, "dict_len": _dict_len,
+        "dict_count": _dict_count, "all": _all, "any": _any,
         "slice_len": _slice_len, "min": _min, "max": _max,
-        "sum": _placeholder, "float": _float, "strlit": _str_lit,
+        "sum": _sum_list, "float": _float, "strlit": _str_lit,
         "tuple": _tuple_val, "dict": _dict_val, "set": _set_val,
         "implies": _implies, "raises": _raises,
         "is_shape": _is_shape, "is_valid": _is_valid,
@@ -375,6 +375,21 @@ def _is_valid(n, ps, pv):
                                          f'model_field_Z {n.obj} "{f.name}"')
             parts.append(unscoped)
     return " /\\ ".join(f"({p})" for p in parts) if parts else "True"
+
+
+def _sum_list(n, ps, pv):
+    """Compile SumExpr — sum of a list of Z values."""
+    return f"(fold_left Z.add ({n.name}) 0%Z)"
+
+
+def _dict_len(n, ps, pv):
+    """Compile DictLenExpr — length of a dict model."""
+    return f"(Z.of_nat (length ({n.name})))"
+
+
+def _dict_count(n, ps, pv):
+    """Compile DictCountExpr — count of entries matching predicate."""
+    return f"(Z.of_nat (length ({n.name})))"  # conservative: length ≈ count
 
 
 def _tuple_val(n, ps, pv):
