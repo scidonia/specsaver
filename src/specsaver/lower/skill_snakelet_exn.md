@@ -92,7 +92,7 @@ induction store_d as [|kv rest IH]; intros k row Hinv Hlook; simpl in *.
 - discriminate.
 - destruct kv as [k0 v0].
   destruct Hinv as [Hfst Hrest].
-  destruct k0 as [| | s | | | | | | | |]; simpl in *;
+  destruct k0 as [| | s | | | | | | | | |]; simpl in *;
     try (apply (IH k row Hrest Hlook)).
   destruct (String.eqb k s) eqn:E.
   + injection Hlook as Hlook. subst v0. exact Hfst.
@@ -106,7 +106,7 @@ induction store_d as [|kv rest IH]; intros Hlook Hrow Hpos Hge Hinv; simpl in *.
 - discriminate.
 - destruct kv as [k0 v0].
   destruct Hinv as [Hfst Hrest].
-  destruct k0 as [| | s | | | | | | | |]; simpl in *;
+  destruct k0 as [| | s | | | | | | | | |]; simpl in *;
     try (split; [exact Hfst | apply (IH ... Hrest)]).
   destruct (String.eqb sku s) eqn:E.
   + (* same key: update preserves the row invariant by delta arithmetic *)

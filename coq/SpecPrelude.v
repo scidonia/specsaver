@@ -35,7 +35,7 @@ Proof.
   induction kvs as [|kv rest IH]; intros k v; simpl.
   - rewrite String.eqb_refl. reflexivity.
   - destruct kv as [k0 v0].
-    destruct k0 as [| | s | | | | | | | |]; simpl; try apply IH.
+    destruct k0 as [| | s | | | | | | | | |]; simpl; try apply IH.
     destruct (String.eqb k s) eqn:E; simpl.
     + rewrite String.eqb_refl. reflexivity.
     + rewrite E. apply IH.
@@ -49,8 +49,8 @@ Proof.
   - destruct (String.eqb k k') eqn:E; simpl; auto.
     apply String.eqb_eq in E. contradiction.
   - destruct kv as [k0 v0].
-    destruct k0 as [| | s | | | | | | | |]; simpl.
-    1-2,4-11: apply (IH k k' v Hne).
+    destruct k0 as [| | s | | | | | | | | |]; simpl.
+    1-2,4-12: apply (IH k k' v Hne).
     destruct (String.eqb k' s) eqn:E1; simpl.
     + apply String.eqb_eq in E1. subst s.
       destruct (String.eqb k k') eqn:E2; simpl.

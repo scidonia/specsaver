@@ -57,7 +57,8 @@ Inductive sn_val :=
   | LitList (vs : list sn_val)                    (* immutable list value *)
   | LitTuple (vs : list sn_val)                   (* immutable tuple value *)
   | LitDict (kvs : list (sn_val * sn_val))        (* immutable dict value *)
-  | LitSet (vs : list sn_val).                    (* immutable set value *)
+  | LitSet (vs : list sn_val)                     (* immutable set value *)
+  | LitFun (func_id : string).                    (* function reference — semantics deferred *)
 
 (** * Expressions *)
 Inductive binop := AddOp | SubOp | MulOp | DivOp | EqOp | LeOp | LtOp | GtOp | GeOp
@@ -79,7 +80,8 @@ Inductive sn_expr :=
   | Try (body : sn_expr) (x : string) (handler : sn_expr)
   | While (e1 e2 : sn_expr)
   | For (x : string) (e1 e2 : sn_expr)
-  | Call (f : string) (args : list sn_expr).
+  | Call (f : string) (args : list sn_expr)
+  | App (e1 e2 : sn_expr).  (* function application — semantics deferred *)
 
 (** * Evaluation contexts.  Try IS a context (body reduces inside it). *)
 Inductive sn_ectx_item :=
@@ -93,7 +95,9 @@ Inductive sn_ectx_item :=
   | IfCtx (e1 e2 : sn_expr)
   | RaiseCtx
   | TryCtx (x : string) (handler : sn_expr)
-  | ForCtx (x : string) (e2 : sn_expr).
+  | ForCtx (x : string) (e2 : sn_expr)
+  | AppLCtx (e2 : sn_expr)
+  | AppRCtx (v1 : sn_val).
 
 (** Is this context item neutral (i.e. NOT a try frame)?  Raise unwinds
     through neutral contexts but is caught by try frames. *)
@@ -113,6 +117,8 @@ Definition fill_item (Ki : sn_ectx_item) (x : sn_expr) : sn_expr :=
   | RaiseCtx => Raise x
   | TryCtx x0 h => Try x x0 h
   | ForCtx x0 e2 => For x0 x e2
+  | AppLCtx e2 => App x e2
+  | AppRCtx v1 => App (Val v1) x
   end.
 
 Definition fill_K (K : list sn_ectx_item) (x : sn_expr) : sn_expr :=
@@ -209,6 +215,7 @@ Fixpoint subst (x : string) (v : sn_val) (e : sn_expr) : sn_expr :=
   | For y e1 e2 =>
       For y (subst x v e1) (if String.eqb x y then e2 else subst x v e2)
   | Call f args => Call f (List.map (subst x v) args)
+  | App e1 e2 => App (subst x v e1) (subst x v e2)
   end.
 
 Fixpoint subst_list (xs : list string) (vs : list sn_val) (e : sn_expr) : sn_expr :=

@@ -482,7 +482,7 @@ Proof.
   - discriminate.
   - destruct kv as [k0 v0].
     destruct Hinv as [Hfst Hrest].
-    destruct k0 as [| | s | | | | | | | |]; simpl in *;
+    destruct k0 as [| | s | | | | | | | | |]; simpl in *;
       try (split; [exact Hfst | apply (IH {fields} Hlook Hprod Hpos{delta_arg} Hrest)]).
     destruct (String.eqb {key} s) eqn:E.
     + apply String.eqb_eq in E. subst s.
@@ -514,7 +514,7 @@ Proof.
   - discriminate.
   - destruct kv as [k0 v0].
     destruct Hinv as [Hfst Hrest].
-    destruct k0 as [| | s | | | | | | | |]; simpl in *;
+    destruct k0 as [| | s | | | | | | | | |]; simpl in *;
       try (apply (IH k row Hrest Hlook)).
     destruct (String.eqb k s) eqn:E.
     + injection Hlook as Hlook. subst v0. exact Hfst.
@@ -1170,7 +1170,7 @@ Proof.
   - discriminate.
   - destruct kv as [k0 v0].
     destruct Hinv as [Hfst Hrest].
-    destruct k0 as [| | s | | | | | | | |]; simpl in *;
+    destruct k0 as [| | s | | | | | | | | |]; simpl in *;
       try (apply (IH k row Hrest Hlook)).
     destruct (String.eqb k s) eqn:E.
     + injection Hlook as Hlook. subst v0. exact Hfst.

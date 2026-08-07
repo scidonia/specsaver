@@ -110,7 +110,7 @@ Proof.
   - discriminate.
   - destruct kv as [k0 v0].
     destruct Hinv as [Hfst Hrest].
-    destruct k0 as [| | s | | | | | | | |]; simpl in *;
+    destruct k0 as [| | s | | | | | | | | |]; simpl in *;
       try (split; [exact Hfst | apply (IH oh rs rp Hlook Hprod Hpos Hdelta Hrest)]).
     destruct (String.eqb sku s) eqn:E.
     + apply String.eqb_eq in E. subst s.
