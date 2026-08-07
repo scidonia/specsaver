@@ -948,7 +948,6 @@ Definition {_TRACE_LOC} : loc := Loc 2%positive.
         *([_gen_post_with_trace(info)] if info.traces else []),
         *exc_texts,
         _table(info, arms),
-        *([_store_inv_lookup()] if not _is_pure(info) else []),
         _totality_pure(info, arms),
         _totality(info, arms),
         *[_preservation_lemma(info, d, i) for i, d in enumerate(info.deltas)],
@@ -1355,27 +1354,30 @@ End gen_{info.name}_L{layer_num}."""
         layer_files[str(layer_num)] = fname
 
     # Emit <name>_Lneg.v — evidential negation layer (candidate
-    # counter-examples + bundling theorems).
+    # counter-examples + bundling theorems).  Pure-function contracts
+    # have no store_inv, so Lneg is not applicable.
     lneg_fname = f"{info.name}_Lneg.v"
-    lneg_text, lneg_obligations = _emit_lneg(info, arms, counter_witnesses)
-    (base / lneg_fname).write_text(lneg_text)
-    for entry in lneg_obligations:
-        entry["source"] = lneg_fname
+    lneg_obligations: list[dict] = []
+    if not _is_pure(info):
+        lneg_text, lneg_obligations = _emit_lneg(info, arms, counter_witnesses)
+        (base / lneg_fname).write_text(lneg_text)
+        for entry in lneg_obligations:
+            entry["source"] = lneg_fname
+    else:
+        (base / lneg_fname).write_text(
+            f"(* Lneg not applicable for pure-function contract [{info.name}]. *)\n"
+        )
 
     # Emit _CoqProject — shared kernel via load path, no duplication.
-    # `-Q <kernel_rel> ""` maps the shared kernel (SnakeletExnLang/Wp/
-    # SpecPrelude) NON-recursively to the empty prefix, computed relative
-    # to out_dir so the package is location-independent.  `-R . ""` maps
-    # the package dir itself to the empty prefix.  Both compile and
-    # Require use the same bare names, avoiding the logical-name remap
-    # conflict that causes "inconsistent assumptions" digest errors.
     import os as _os
     repo_root = Path(__file__).resolve().parents[3]
     kernel_dir = repo_root / "coq"
     kernel_rel = str(kernel_dir.resolve())
     project_lines = [f"-Q {kernel_rel} \"\"", "-R . \"\""] + [
         f"{info.name}_defs.v",
-    ] + [layer_files[str(layer)] for layer in sorted(layer_files)] + [lneg_fname]
+    ] + [layer_files[str(layer)] for layer in sorted(layer_files)]
+    if not _is_pure(info):
+        project_lines.append(lneg_fname)
     (base / "_CoqProject").write_text("\n".join(project_lines) + "\n")
 
     # Emit _skill.md — SnakeletExn proof patterns for rocq-piler.
