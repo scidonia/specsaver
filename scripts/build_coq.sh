@@ -28,3 +28,4 @@ for f in "${FILES[@]}"; do
   coqc -R coq "" "$f"
 done
 echo "all coq artifacts compiled"
+  coq/ReleaseLowering.v
