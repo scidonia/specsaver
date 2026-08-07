@@ -70,7 +70,7 @@ Lemma apply_updates_single (l : loc) (v w : sn_val) :
 Proof.
   simpl. apply map_eq. intros k.
   destruct (decide (k = l)) as [->|Hne].
-  - rewrite !lookup_insert. case_decide; [reflexivity|congruence].
+  - rewrite !lookup_insert. reflexivity.
   - rewrite !lookup_insert_ne; done.
 Qed.
 
@@ -91,10 +91,10 @@ Proof.
   apply (HeadCallSpecS "bump" [LitLoc l] {[l := LitInt n]}
           bump_pre bump_post (RVal (LitInt n)) [(l, LitInt (n + 1))]).
   - reflexivity.
-  - exists l, n. split; [done|]. apply lookup_insert_eq.
-  - exists l, n. split; [done|]. split; [apply lookup_insert_eq|done].
+  - exists l, n. split; [done|]. apply lookup_insert.
+  - exists l, n. split; [done|]. split; [apply lookup_insert|done].
   - unfold updates_dom_in. constructor; [|constructor].
-    simpl. eexists. apply lookup_insert_eq.
+    simpl. eexists. apply lookup_insert.
 Qed.
 
 (** BDD scenario: pre-violation is stuck.  Calling bump on a heap
